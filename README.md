@@ -79,9 +79,12 @@ healthcheck (`HEAD /`). No persistent volumes, no network egress.
 
 ### 4. GitHub Pages (canonical hosting)
 
-Pushes to `main` are published automatically to GitHub Pages via the workflow
-in `.github/workflows/pages.yml`. The canonical URL is
-<https://algo-visualization.jgrapht.org/>.
+The site is published from `main` via GitHub Pages' built-in branch source
+(Settings → Pages → Source: *Deploy from a branch* → `main` / `/` root). No
+build step, no workflow — every push to `main` is picked up by GitHub's
+static builder. `.nojekyll` is committed at the root so Jekyll is skipped.
+
+Canonical URL: <https://algo-visualization.jgrapht.org/>.
 
 ## What's inside
 
@@ -92,7 +95,7 @@ in `.github/workflows/pages.yml`. The canonical URL is
 | `nginx.conf` | Minimal server block: serves the one static file, no autoindex, no server tokens. |
 | `docker-compose.yml` | One-service compose file (build + port mapping). |
 | `vercel.json` | Static-routing config for matching Vercel deployments. |
-| `.github/workflows/pages.yml` | GitHub Pages deployment on push to `main`. |
+| `.nojekyll` | Empty marker file so GitHub Pages skips Jekyll. |
 
 ## Controls (in-app)
 
