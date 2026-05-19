@@ -1,0 +1,13 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.iml
+
+# Local dev servers / dumps
+node_modules/
+.cache/
+.tmp/
+*.log

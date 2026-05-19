@@ -1,0 +1,12 @@
+.git
+.github
+.gitignore
+.nojekyll
+README.md
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+license-EPL.txt
+license-LGPL.txt
+docker-compose.yml
+.dockerignore
+vercel.json
