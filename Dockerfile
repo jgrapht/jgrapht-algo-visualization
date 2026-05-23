@@ -15,6 +15,7 @@ COPY --chown=app:app apple-touch-icon.png /usr/share/nginx/html/apple-touch-icon
 
 # Per-topic visualization pages (one self-contained HTML each).
 COPY --chown=app:app shortest-paths /usr/share/nginx/html/shortest-paths
+COPY --chown=app:app hamiltonian   /usr/share/nginx/html/hamiltonian
 
 COPY --chown=app:app nginx.conf /etc/nginx/conf.d/default.conf
 

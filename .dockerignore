@@ -11,4 +11,3 @@ license-LGPL.txt
 docker-compose.yml
 .dockerignore
 vercel.json
-hamiltonian
