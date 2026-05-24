@@ -536,17 +536,23 @@ const EXAMPLE_LABELS = {
   dirNoHam:           "Three sources → one sink (no Ham)",
 };
 
-// Compute the example list to show given a pair (algoA, algoB). If either
-// uses DAG, restrict to DAG examples; otherwise show backtracking examples.
+// Compute the example list to show given the pair (algoA, algoB).
+//
+//   both DAG          -> all DAG examples (cyclic included; shows
+//                        rejection demo on both panes).
+//   mixed DAG + BT    -> only DAG-compatible graphs (directed + acyclic)
+//                        so both algorithms can actually run. cyclic and
+//                        undirected examples drop out — comparing the
+//                        polynomial DAG solver against general backtracking
+//                        on the same DAG input.
+//   both BT           -> backtracking examples (mix of undirected with
+//                        each precheck, plus directed-cyclic with/without
+//                        Ham).
 function examplesForPair(algoA, algoB) {
-  const usesDag = (algoA === "dag" || algoB === "dag");
-  const onlyDag = (algoA === "dag" && algoB === "dag");
-  if (onlyDag) return EXAMPLE_GROUPS.dag;
-  if (usesDag) {
-    // Mixed: filter backtracking examples to only directed ones (so DAG
-    // can attempt them), plus keep the DAG-only examples.
-    return EXAMPLE_GROUPS.dag.concat(["dirHam", "dirNoHam"]);
-  }
+  const aDag = (algoA === "dag");
+  const bDag = (algoB === "dag");
+  if (aDag && bDag) return EXAMPLE_GROUPS.dag;
+  if (aDag || bDag) return ["pipeline", "fanout", "fork", "layered", "dirNoHam"];
   return EXAMPLE_GROUPS.bt;
 }
 
@@ -1506,7 +1512,16 @@ function draw(state, canvas) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  const padX = 36, padTop = 28, padBot = 36;
+  // Uniform label placement: if any node label is too wide for the disc,
+  // ALL labels render below. Avoids the visual jank of mixed inside/below.
+  ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
+  const maxInsideWidth = NODE_RADIUS * 2 - 6;
+  const labelsBelow = state.g.nodes.some(n => {
+    const lbl = n.label || String(n.id);
+    return ctx.measureText(lbl).width > maxInsideWidth;
+  });
+
+  const padX = 36, padTop = 28, padBot = labelsBelow ? 36 : 28;
   const xy = (n) => ({
     x: padX + n.x * (w - 2 * padX),
     y: padTop + n.y * (h - padTop - padBot),
@@ -1568,7 +1583,7 @@ function draw(state, canvas) {
       fill = "var(--node-explored)"; stroke = "#5fa66c"; strokeWidth = 1.8;
     }
 
-    drawNode(ctx, p.x, p.y, n, fill, stroke, strokeWidth);
+    drawNode(ctx, p.x, p.y, n, fill, stroke, strokeWidth, labelsBelow);
   }
 }
 
@@ -1601,7 +1616,7 @@ function drawEdge(ctx, a, b, colorVar, width, directed) {
   ctx.restore();
 }
 
-function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
+function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth, labelsBelow) {
   const fill = cssVarValue(fillVar);
   const stroke = cssVarValue(strokeVar);
   ctx.save();
@@ -1615,13 +1630,9 @@ function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
   const label = node.label || String(node.id);
   ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
   ctx.textAlign = "center";
-  const tw = ctx.measureText(label).width;
-  const fitsInside = tw <= NODE_RADIUS * 2 - 6;
-  if (fitsInside) {
-    ctx.fillStyle = "#e6e8ef";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x, y);
-  } else {
+  if (labelsBelow) {
+    // All labels in this graph render below the disc; show a centre dot
+    // inside as a visual anchor.
     ctx.fillStyle = "#9aa4ba";
     ctx.textBaseline = "middle";
     ctx.font = "600 10px -apple-system, 'Segoe UI', system-ui, sans-serif";
@@ -1630,6 +1641,10 @@ function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
     ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
     ctx.textBaseline = "top";
     ctx.fillText(label, x, y + NODE_RADIUS + 4);
+  } else {
+    ctx.fillStyle = "#e6e8ef";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y);
   }
   ctx.restore();
 }
