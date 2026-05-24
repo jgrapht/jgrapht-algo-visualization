@@ -23,6 +23,8 @@
     --edge-considered: #5fc2c9;     /* cyan/teal — distinct from gold accept */
     --edge-accepted: #ffd166;       /* gold — final reconstructed path */
     --edge-tree: #7a6c9c;           /* muted indigo — predecessor scaffolding */
+    --edge-banned: #d8595e;
+    --edge-pruned: #6c4d4f;
     --node-fill: #2a3142;
     --node-stroke: #6c7488;
     --node-explored: #8ee08e;
@@ -73,7 +75,15 @@
   .controls .transport button:last-child { border-right: none; }
   .controls .transport button:disabled { color: #555a6a; cursor: default; }
   .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
-  .panes { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 10px; }
+  /* Two-pane grid (one column on narrow screens). */
+  .panes {
+    display: grid; gap: 10px; padding: 10px;
+    grid-template-columns: 1fr 1fr;
+  }
+  @media (max-width: 900px) {
+    .panes { grid-template-columns: 1fr; }
+  }
+  .panes.single { grid-template-columns: 1fr; }
   .pane {
     background: var(--panel); border: 1px solid #232838; border-radius: 10px;
     display: flex; flex-direction: column;
@@ -96,8 +106,7 @@
   .pane .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; min-height: 24px; }
   .pane .stat .v { color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1; }
   .pane canvas {
-    /* Cap canvas height so the event narrative stays in viewport without
-       scrolling. min-height keeps it readable on tall layouts. */
+    /* Cap canvas height so the event narrative stays in viewport. */
     width: 100%;
     height: min(38vh, 320px);
     min-height: 200px;
@@ -110,6 +119,8 @@
     background: #11151d; min-height: 38px;
   }
   .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .pane.done .event-info { background: #0f1f17; }
+  .pane.rejected .event-info { background: #1f1417; }
   .legend {
     display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
     background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
@@ -137,10 +148,13 @@
   details.explainer .card .def { color: #c0c6d6; }
   details.explainer code { background: #11151d; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .results { padding: 0 10px 10px; }
+  .results .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .results.single .row { grid-template-columns: 1fr; }
   .results h3 { margin: 8px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
   .results ol { margin: 0 0 0 16px; padding: 0; font-size: 12px; color: #c0c6d6; }
   .results ol li { margin: 2px 0; }
   .results .seq { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+  .results .reject { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -151,16 +165,21 @@
 </header>
 
 <div class="controls">
-  <label for="algo">Algorithm</label>
-  <select id="algo">
-    <option value="dag" selected>DAG longest-path (polynomial)</option>
-    <option value="bt-naive" disabled>Backtracking (vanilla) — coming soon</option>
-    <option value="bt-full" disabled>Backtracking with prechecks + MRV + reachability — coming soon</option>
-    <option value="hk" disabled>Held-Karp subset DP — coming soon</option>
+  <label for="algoA">A</label>
+  <select id="algoA">
+    <option value="bt-naive" selected>Backtracking (vanilla)</option>
+    <option value="bt-full">Backtracking + prechecks + MRV + reachability</option>
+    <option value="dag">DAG longest-path (polynomial)</option>
+  </select>
+  <label for="algoB">B</label>
+  <select id="algoB">
+    <option value="bt-naive">Backtracking (vanilla)</option>
+    <option value="bt-full" selected>Backtracking + prechecks + MRV + reachability</option>
+    <option value="dag">DAG longest-path (polynomial)</option>
   </select>
   <label for="example">Example</label>
   <select id="example">
-    <!-- populated per algorithm -->
+    <!-- populated per-algo-pair -->
   </select>
   <span class="transport">
     <button id="run" class="primary" title="Load — build the graph and the event stream">⏏</button>
@@ -177,90 +196,106 @@
   <span id="progress" class="sub">step 0 / 0</span>
 </div>
 
-<div class="panes">
+<div class="panes" id="panes">
 
   <div class="pane" id="paneA">
     <h2 id="A_h2">—</h2>
     <div class="stats">
       <div class="stat"><div class="k" id="A_lbl0">phase</div><div class="v" id="A_slot0">—</div></div>
-      <div class="stat"><div class="k" id="A_lbl1">vertices</div><div class="v" id="A_slot1">0</div></div>
-      <div class="stat"><div class="k" id="A_lbl2">longest so far</div><div class="v" id="A_slot2">0</div></div>
-      <div class="stat"><div class="k" id="A_lbl3">work units</div><div class="v" id="A_slot3">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl1">depth</div><div class="v" id="A_slot1">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl2">states</div><div class="v" id="A_slot2">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl3">backtracks</div><div class="v" id="A_slot3">0</div></div>
     </div>
     <canvas id="canvasA"></canvas>
     <div class="status" id="statusA">Ready.</div>
     <div class="event-info" id="eventInfoA">Pick an example above, then press <b>Play</b>.</div>
   </div>
 
-  <div class="results" id="results">
-    <h3>Reconstructed path</h3>
-    <ol id="A_paths"></ol>
+  <div class="pane" id="paneB">
+    <h2 id="B_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k" id="B_lbl0">phase</div><div class="v" id="B_slot0">—</div></div>
+      <div class="stat"><div class="k" id="B_lbl1">depth</div><div class="v" id="B_slot1">0</div></div>
+      <div class="stat"><div class="k" id="B_lbl2">states</div><div class="v" id="B_slot2">0</div></div>
+      <div class="stat"><div class="k" id="B_lbl3">backtracks</div><div class="v" id="B_slot3">0</div></div>
+    </div>
+    <canvas id="canvasB"></canvas>
+    <div class="status" id="statusB">Ready.</div>
+    <div class="event-info" id="eventInfoB">Pick an example above, then press <b>Play</b>.</div>
   </div>
 
 </div>
 
+<div class="results" id="results">
+  <div class="row">
+    <div><h3>Pane A — result</h3><ol id="A_paths"></ol></div>
+    <div><h3>Pane B — result</h3><ol id="B_paths"></ol></div>
+  </div>
+</div>
+
 <div class="legend">
-  <span><span class="sw" style="background:var(--node-source)"></span>start of reconstructed path</span>
-  <span><span class="sw" style="background:var(--node-target)"></span>end of reconstructed path</span>
-  <span><span class="sw" style="background:var(--node-active)"></span>vertex being processed this step</span>
-  <span><span class="sw" style="background:var(--node-explored)"></span>vertex already finalised (DP cell settled)</span>
-  <span><span class="sw" style="background:var(--node-impossible)"></span>vertex in a detected cycle (DAG rejection)</span>
-  <span><span class="sw" style="background:var(--edge-considered)"></span>edge being considered this step</span>
-  <span><span class="sw" style="background:var(--edge-accepted)"></span>edge on the reconstructed path</span>
-  <span><span class="sw" style="background:var(--edge-tree)"></span>edge used by the best path ending at some vertex (predecessor pointer)</span>
+  <span><span class="sw" style="background:var(--node-source)"></span>start of path</span>
+  <span><span class="sw" style="background:var(--node-target)"></span>end of path</span>
+  <span><span class="sw" style="background:var(--node-active)"></span>current vertex (this step)</span>
+  <span><span class="sw" style="background:var(--node-explored)"></span>visited on current DFS path</span>
+  <span><span class="sw" style="background:var(--node-impossible)"></span>cycle member / precheck-failed</span>
+  <span><span class="sw" style="background:var(--edge-considered)"></span>edge being considered</span>
+  <span><span class="sw" style="background:var(--edge-accepted)"></span>edge on reconstructed/accepted path</span>
+  <span><span class="sw" style="background:var(--edge-tree)"></span>predecessor pointer (DP)</span>
+  <span><span class="sw" style="background:var(--edge-banned)"></span>backtracked edge (just rejected)</span>
 </div>
 
 <details class="explainer" id="glossaryWrap" open>
-  <summary>Glossary — Hamiltonian path, topological order, longest-path DP</summary>
+  <summary>Glossary — Hamiltonian path, prechecks, backtracking, MRV, DP</summary>
   <div class="body glossary">
-    <div class="card"><div class="term">Hamiltonian path</div><div class="def">A path in a graph that visits every vertex <em>exactly once</em>. Unlike a Hamiltonian <em>cycle</em>, it does not have to return to its start vertex. Deciding existence is NP-complete in general — but on a DAG it reduces to longest path, which is polynomial.</div></div>
-    <div class="card"><div class="term">Directed acyclic graph (DAG)</div><div class="def">A directed graph with no directed cycle. Equivalently, its vertices admit a <em>topological order</em>: a linear arrangement <code>v₁, v₂, …, vₙ</code> in which every edge <code>u → v</code> has <code>u</code> appear before <code>v</code>.</div></div>
-    <div class="card"><div class="term">Topological order</div><div class="def">Computed in <code>O(|V| + |E|)</code> by Kahn's algorithm: repeatedly emit a vertex with in-degree 0 and remove its outgoing edges. If at any point no zero-in-degree vertex exists while vertices remain, the graph has a cycle and Hamiltonian-path-via-DAG is inapplicable.</div></div>
-    <div class="card"><div class="term">Longest-path DP on a DAG</div><div class="def">Process vertices in topological order. For each vertex <code>v</code>, set <code>L(v) = 1 + max{L(u) : (u → v) ∈ E}</code> (or <code>1</code> if no incoming edge). Remember the argmax as <code>pred(v)</code> for reconstruction. Total time <code>O(|V| + |E|)</code>.</div></div>
-    <div class="card"><div class="term">Hamiltonian-path test</div><div class="def">Once the DP finishes, let <code>L* = max_v L(v)</code>. The DAG has a Hamiltonian path <em>iff</em> <code>L* = |V|</code> — the longest path is forced to visit every vertex. The path itself is reconstructed by following <code>pred</code> backwards from the argmax vertex.</div></div>
-    <div class="card"><div class="term">Predecessor pointers</div><div class="def">During the DP, every time we update <code>L(v)</code> via an incoming edge <code>(u → v)</code>, we also store <code>pred(v) = u</code>. After the DP, reconstruction is a simple backward walk along these pointers from the best end vertex.</div></div>
-    <div class="card"><div class="term">Why this only works on DAGs</div><div class="def">In a graph with a cycle, "longest <em>simple</em> path" is NP-hard. The DP above implicitly assumes that processing <code>v</code> after all its predecessors is safe — which is only true when no edge ever points "backwards" in the iteration order. Topological order guarantees that.</div></div>
+    <div class="card"><div class="term">Hamiltonian path</div><div class="def">A path in a graph that visits every vertex <em>exactly once</em>. Unlike a Hamiltonian <em>cycle</em>, it does not have to return to its start vertex. Deciding existence is NP-complete in general.</div></div>
+    <div class="card"><div class="term">Backtracking DFS</div><div class="def">Depth-first search over simple paths: pick a start vertex, extend by an unvisited neighbour, recurse. On dead-end, undo the last step (<em>backtrack</em>) and try the next candidate. Without pruning, runs in worst-case exponential time.</div></div>
+    <div class="card"><div class="term">"States" counter</div><div class="def">Each entry into the recursive extension routine counts as one state. Equivalent to "DFS nodes explored". The headline metric for comparing vanilla DFS against pruned DFS.</div></div>
+    <div class="card"><div class="term">Precheck</div><div class="def">A cheap necessary condition computed before search. If a precheck fails, the search is skipped and "no Hamiltonian path" is reported immediately. None of the prechecks here can give a false negative — they only reject graphs that truly have no Hamiltonian path.</div></div>
+    <div class="card"><div class="term">Connectivity precheck (undirected)</div><div class="def">An undirected graph that isn't connected can't have a Hamiltonian path — a path is itself connected, so it can't span disconnected components.</div></div>
+    <div class="card"><div class="term">Degree-1 precheck (undirected)</div><div class="def">A Hamiltonian path has at most two endpoints. Any vertex of degree 1 must be one of those endpoints. So a graph with three or more degree-1 vertices can't have a Hamiltonian path.</div></div>
+    <div class="card"><div class="term">Cut-vertex blocks precheck (undirected)</div><div class="def">A cut vertex (articulation point) that sits in three or more biconnected blocks can't be visited by a Hamiltonian path: the path uses at most two edges at any internal vertex, so it can only weave through at most two of the cut vertex's blocks.</div></div>
+    <div class="card"><div class="term">Bridge-tree precheck (undirected)</div><div class="def">In the bridge tree (2-edge-connected components as nodes, bridges as edges), every component must have at most two incident bridges. A Hamiltonian path enters and leaves each component at most once.</div></div>
+    <div class="card"><div class="term">SCC condensation precheck (directed)</div><div class="def">For a directed graph, the condensation DAG of its strongly connected components must itself admit a Hamiltonian path (which is a polynomial check, since it's a DAG). If the condensation doesn't, the original graph cannot.</div></div>
+    <div class="card"><div class="term">Reachability prune</div><div class="def">At every DFS step, every still-unvisited vertex must be reachable from the current endpoint through unvisited intermediaries. If some unvisited vertex is unreachable, the branch can't be completed — prune it without descending further.</div></div>
+    <div class="card"><div class="term">MRV ordering</div><div class="def">Minimum-remaining-values heuristic: try candidates in ascending order of their unvisited onward degree. Vertices with few onward options tend to commit or fail early, which generally reduces search.</div></div>
+    <div class="card"><div class="term">Longest-path DP on a DAG</div><div class="def"><b>DP</b> = dynamic programming. Process vertices in topological order. For each vertex <code>v</code>, set <code>L(v) = 1 + max{L(u) : (u → v) ∈ E}</code> (or <code>1</code> if no incoming edge). Remember the argmax as <code>pred(v)</code> for reconstruction. Total time <code>O(|V| + |E|)</code>.</div></div>
+    <div class="card"><div class="term">Hamiltonian-path test (DAG)</div><div class="def">For a DAG, a Hamiltonian path exists iff its longest path has length <code>|V|</code> — the longest path is forced to visit every vertex. Reconstruction follows <code>pred</code> backwards.</div></div>
   </div>
 </details>
 
 <details class="explainer" id="narrativeWrap">
-  <summary>What you're watching — DAG longest-path Hamiltonian solver</summary>
+  <summary>What you're watching — Hamiltonian solvers</summary>
   <div class="body">
-    <h3 style="margin-top:0">DagHamiltonianPath</h3>
+    <h3 style="margin-top:0">Pick any two algorithms with the A and B selectors</h3>
     <p>
-      For a directed acyclic graph the Hamiltonian-path problem collapses from
-      NP-complete to <code>O(|V| + |E|)</code>. The algorithm runs in three phases,
-      animated step by step in the panel above:
+      Three solvers from JGraphT's
+      <code>org.jgrapht.alg.hamiltonian</code> package are wired up. Each is
+      animated step-by-step in its own pane so you can compare them on the
+      same input:
     </p>
-    <ol style="margin:4px 0 8px 18px; padding:0;">
-      <li>
-        <b>Cycle check.</b> Compute a topological order with Kahn's algorithm.
-        If a cycle is present, the algorithm rejects the input — visualised as
-        the unprocessable subset of vertices turning red.
-      </li>
-      <li>
-        <b>Longest-path DP.</b> Sweep the topological order. For each vertex
-        <code>v</code>, examine every incoming edge <code>(u → v)</code> and update
-        <code>L(v) = max(L(v), L(u) + 1)</code>, recording <code>pred(v) = u</code>
-        whenever the maximum improves. The "vertex being processed" highlight
-        tracks the sweep pointer; "edge being considered" highlights the incoming
-        edge currently being relaxed.
-      </li>
-      <li>
-        <b>Existence test + reconstruction.</b> Look at <code>L* = max_v L(v)</code>.
-        If <code>L* &lt; |V|</code>, no Hamiltonian path exists. If <code>L* = |V|</code>,
-        backtrack along <code>pred</code> from the argmax to recover the path,
-        which then renders in gold on the canvas and in the "Reconstructed path"
-        list below.
-      </li>
-    </ol>
+    <ul>
+      <li><b>Backtracking (vanilla)</b> — DFS over simple paths with no
+        prechecks, no candidate ordering, no reachability prune. Exhaustive
+        worst-case exponential search. Baseline for comparison.</li>
+      <li><b>Backtracking + prechecks + MRV + reachability</b> — the actual
+        <code>BacktrackingHamiltonianPath</code> from JGraphT. Runs five
+        cheap necessary-condition prechecks (connectivity, degree-1 count,
+        cut-vertex block degree, bridge-tree degree, SCC condensation for
+        directed graphs). If they all pass, the DFS extension applies a
+        reachability prune at every step and orders candidates by MRV
+        (minimum remaining values, i.e. ascending onward degree).</li>
+      <li><b>DAG longest-path</b> — <code>DagHamiltonianPath</code>: a
+        polynomial-time solver that only applies when the input is a DAG.
+        Compares longest path against vertex count, reconstructs via
+        predecessor pointers.</li>
+    </ul>
     <p>
-      The general Hamiltonian-path problem stays NP-complete; this is one of the
-      cleanest examples of how a structural restriction (here, acyclicity) can
-      eliminate the exponential blowup. Compare with the other Hamiltonian solvers
-      in JGraphT — <code>BacktrackingHamiltonianPath</code> and
-      <code>HeldKarpHamiltonianPath</code> — which handle the general case in
-      exponential time. <em>(Those visualizations are coming soon to this page.)</em>
+      The two panes run independently; total progress is the step count of
+      the slower pane. You'll notice that on "no-Hamiltonian" examples
+      (spider, three-triangle hub, directed-three-sources) the prechecked
+      backtracking rejects in a handful of steps while the vanilla version
+      exhausts the DFS tree.
     </p>
   </div>
 </details>
@@ -272,22 +307,20 @@
 // Graph examples
 // =======================================================================
 //
-// Each example returns a directed graph described as:
+// Each example returns a graph described as:
 //   {
-//     title: string,            // display name
-//     nodes: [{id, x, y}],      // ids are 0..n-1; (x, y) in [0,1]^2
-//     edges: [[u, v]],          // directed edges u -> v
-//     hasCycle: bool,           // true => DAG solver rejects
-//     hint: string,             // one-liner shown in the status bar
+//     title:    string,            display name
+//     nodes:    [{id, x, y, label}], ids are 0..n-1; (x, y) in [0,1]^2
+//     edges:    [[u, v]],            edges (semantically directed iff `directed`)
+//     directed: bool,                renderer draws arrowheads iff true
+//     hasCycle: bool,                purely informative
+//     hint:     string,              one-liner shown in the status bar
 //   }
-//
-// Positions are normalised; the renderer maps them to canvas pixels.
 
 const EXAMPLES = {
 
-  // ----- Pipeline DAG: brainstorm -> design -> plan -> build -> test -> ship.
-  // Single source, single sink, perfectly linear -- the easiest possible
-  // Hamiltonian path.
+  // ----- DAG examples (used by DAG algorithm) -----
+
   pipeline: () => ({
     title: "Pipeline (linear chain, Ham exists)",
     nodes: [
@@ -301,12 +334,11 @@ const EXAMPLES = {
     edges: [
       [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],
     ],
+    directed: true,
     hasCycle: false,
     hint: "Trivial DAG Hamiltonian path: every step has exactly one successor.",
   }),
 
-  // ----- Fan-out DAG with Hamiltonian path -----
-  // Some branching, but a topological traversal still visits all 6 vertices.
   fanout: () => ({
     title: "Fan-out DAG (Ham exists, 6 vertices)",
     nodes: [
@@ -320,13 +352,11 @@ const EXAMPLES = {
     edges: [
       [0, 1], [0, 2], [1, 2], [2, 3], [3, 4], [3, 5], [4, 5],
     ],
+    directed: true,
     hasCycle: false,
     hint: "DAG with branching; longest path covers all 6 vertices.",
   }),
 
-  // ----- DAG without a Hamiltonian path -----
-  // Two parallel branches that never join into a single Hamiltonian path:
-  // any topological linear extension skips one of {B,C} or one of {D,E}.
   fork: () => ({
     title: "Diamond fork (no Ham)",
     nodes: [
@@ -340,11 +370,11 @@ const EXAMPLES = {
     edges: [
       [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 5],
     ],
+    directed: true,
     hasCycle: false,
     hint: "Two parallel branches. Longest path = 4 < 6 vertices => no Hamiltonian path.",
   }),
 
-  // ----- Layered DAG, Hamiltonian path exists -----
   layered: () => ({
     title: "Layered DAG (Ham exists, 7 vertices)",
     nodes: [
@@ -359,12 +389,11 @@ const EXAMPLES = {
     edges: [
       [0, 1], [0, 2], [1, 2], [1, 3], [2, 3], [3, 4], [3, 5], [4, 5], [4, 6], [5, 6],
     ],
+    directed: true,
     hasCycle: false,
     hint: "Bigger DAG with multiple layers; the Hamiltonian path threads them in order.",
   }),
 
-  // ----- Cyclic directed graph: DAG solver must reject -----
-  // 3-cycle A -> B -> C -> A plus a dangling D.
   cyclic: () => ({
     title: "Cyclic (DAG solver rejects)",
     nodes: [
@@ -376,53 +405,200 @@ const EXAMPLES = {
     edges: [
       [0, 1], [1, 2], [2, 0], [2, 3],
     ],
+    directed: true,
     hasCycle: true,
-    hint: "Contains the cycle A → B → C → A; this solver is DAG-only.",
+    hint: "Contains the cycle A → B → C → A; the DAG solver rejects cyclic input.",
+  }),
+
+  // ----- Backtracking examples -----
+  // Mix of undirected (for the 4 undirected prechecks) and directed
+  // (for the SCC condensation precheck).
+
+  // Undirected 5-vertex path. Trivial Hamiltonian.
+  upath: () => ({
+    title: "Undirected path (5 vertices, trivial Ham)",
+    nodes: [
+      { id: 0, x: 0.10, y: 0.50, label: "0" },
+      { id: 1, x: 0.30, y: 0.50, label: "1" },
+      { id: 2, x: 0.50, y: 0.50, label: "2" },
+      { id: 3, x: 0.70, y: 0.50, label: "3" },
+      { id: 4, x: 0.90, y: 0.50, label: "4" },
+    ],
+    edges: [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+    ],
+    directed: false,
+    hasCycle: false,
+    hint: "Plain path 0–1–2–3–4. Hamiltonian path is the graph itself.",
+  }),
+
+  // Spider: hub + 4 leaves. Four degree-1 vertices => degree-1 precheck rejects.
+  spider: () => ({
+    title: "Spider (4 leaves, no Ham — degree-1 precheck)",
+    nodes: [
+      { id: 0, x: 0.50, y: 0.50, label: "hub" },
+      { id: 1, x: 0.15, y: 0.20, label: "a"   },
+      { id: 2, x: 0.85, y: 0.20, label: "b"   },
+      { id: 3, x: 0.15, y: 0.80, label: "c"   },
+      { id: 4, x: 0.85, y: 0.80, label: "d"   },
+    ],
+    edges: [
+      [0, 1], [0, 2], [0, 3], [0, 4],
+    ],
+    directed: false,
+    hasCycle: false,
+    hint: "Hub-and-spokes. 4 leaves > 2 endpoints — full solver rejects; vanilla exhausts DFS.",
+  }),
+
+  // Three triangles meeting at a vertex => cut-vertex precheck rejects.
+  threeTrianglesHub: () => ({
+    title: "Three triangles at one hub (no Ham — cut-vertex precheck)",
+    nodes: [
+      { id: 0, x: 0.50, y: 0.50, label: "hub" },
+      { id: 1, x: 0.15, y: 0.18, label: "a1"  },
+      { id: 2, x: 0.30, y: 0.05, label: "a2"  },
+      { id: 3, x: 0.85, y: 0.18, label: "b1"  },
+      { id: 4, x: 0.70, y: 0.05, label: "b2"  },
+      { id: 5, x: 0.50, y: 0.92, label: "c1"  },
+      { id: 6, x: 0.30, y: 0.92, label: "c2"  },
+    ],
+    edges: [
+      // Triangle A: hub, a1, a2
+      [0, 1], [1, 2], [2, 0],
+      // Triangle B: hub, b1, b2
+      [0, 3], [3, 4], [4, 0],
+      // Triangle C: hub, c1, c2
+      [0, 5], [5, 6], [6, 0],
+    ],
+    directed: false,
+    hasCycle: false,
+    hint: "Hub sits in 3 biconnected blocks — full solver rejects via cut-vertex precheck.",
+  }),
+
+  // Directed graph with a Hamiltonian path (cyclic, so DAG solver inapplicable
+  // — but full backtracking finds it after the SCC precheck passes since the
+  // whole graph is a single SCC of size 4).
+  dirHam: () => ({
+    title: "Directed cycle + chord (5 vertices, Ham exists)",
+    nodes: [
+      { id: 0, x: 0.15, y: 0.50, label: "A" },
+      { id: 1, x: 0.40, y: 0.20, label: "B" },
+      { id: 2, x: 0.65, y: 0.50, label: "C" },
+      { id: 3, x: 0.40, y: 0.80, label: "D" },
+      { id: 4, x: 0.90, y: 0.50, label: "E" },
+    ],
+    edges: [
+      [0, 1], [1, 2], [2, 3], [3, 0],   // 4-cycle A→B→C→D→A
+      [0, 2],                           // chord A→C
+      [2, 4],                           // tail C→E
+    ],
+    directed: true,
+    hasCycle: true,
+    hint: "Single SCC of size 4 with a tail. Ham: A→B→C→D→ then need E too — try A→B→C→E? E has no out-edges. Real Ham: A→B→D? D→A only. Try A→C→E only 3 vertices… [solver finds the answer].",
+  }),
+
+  // Directed: 3 disjoint source vertices all pointing to a common sink.
+  // Condensation = the same 4 vertices (each is its own singleton SCC).
+  // Longest path in the condensation = 2 (source → sink) < 4 => SCC precheck rejects.
+  dirNoHam: () => ({
+    title: "Three sources → one sink (no Ham — SCC precheck)",
+    nodes: [
+      { id: 0, x: 0.20, y: 0.20, label: "S1" },
+      { id: 1, x: 0.20, y: 0.50, label: "S2" },
+      { id: 2, x: 0.20, y: 0.80, label: "S3" },
+      { id: 3, x: 0.80, y: 0.50, label: "T"  },
+    ],
+    edges: [
+      [0, 3], [1, 3], [2, 3],
+    ],
+    directed: true,
+    hasCycle: false,
+    hint: "SCC condensation has 4 vertices but its longest path = 2 < 4 — full solver rejects.",
   }),
 
 };
 
-const EXAMPLES_PER_ALGO = {
-  dag: [
-    { key: "pipeline", label: "Pipeline (linear chain)" },
-    { key: "fanout",   label: "Fan-out DAG (Ham exists)" },
-    { key: "fork",     label: "Diamond fork (no Ham)" },
-    { key: "layered",  label: "Layered DAG (7 vertices)" },
-    { key: "cyclic",   label: "Cyclic (DAG solver rejects)" },
-  ],
+const EXAMPLE_GROUPS = {
+  dag: ["pipeline", "fanout", "fork", "layered", "cyclic"],
+  bt:  ["upath", "spider", "threeTrianglesHub", "dirHam", "dirNoHam"],
 };
 
+const EXAMPLE_LABELS = {
+  pipeline:           "Pipeline (linear chain, Ham)",
+  fanout:             "Fan-out DAG (Ham)",
+  fork:               "Diamond fork (no Ham)",
+  layered:            "Layered DAG (Ham)",
+  cyclic:             "Cyclic (DAG solver rejects)",
+  upath:              "Undirected path (trivial Ham)",
+  spider:             "Spider (4 leaves, no Ham)",
+  threeTrianglesHub:  "Three triangles at one hub (no Ham)",
+  dirHam:             "Directed cycle + chord (Ham)",
+  dirNoHam:           "Three sources → one sink (no Ham)",
+};
+
+// Compute the example list to show given a pair (algoA, algoB). If either
+// uses DAG, restrict to DAG examples; otherwise show backtracking examples.
+function examplesForPair(algoA, algoB) {
+  const usesDag = (algoA === "dag" || algoB === "dag");
+  const onlyDag = (algoA === "dag" && algoB === "dag");
+  if (onlyDag) return EXAMPLE_GROUPS.dag;
+  if (usesDag) {
+    // Mixed: filter backtracking examples to only directed ones (so DAG
+    // can attempt them), plus keep the DAG-only examples.
+    return EXAMPLE_GROUPS.dag.concat(["dirHam", "dirNoHam"]);
+  }
+  return EXAMPLE_GROUPS.bt;
+}
+
 const ALGO_INFO = {
-  dag: {
-    h2: "DagHamiltonianPath",
+  "dag": {
+    h2:    "DagHamiltonianPath",
     badge: "polynomial · O(V+E)",
     slotLabels: ["phase", "vertices", "longest so far", "edges relaxed"],
+  },
+  "bt-naive": {
+    h2:    "Backtracking (vanilla)",
+    badge: "no prechecks · no MRV · no prune",
+    slotLabels: ["phase", "depth", "states", "backtracks"],
+  },
+  "bt-full": {
+    h2:    "Backtracking + prechecks",
+    badge: "+ MRV + reachability prune",
+    slotLabels: ["phase", "depth", "states", "backtracks"],
   },
 };
 
 // =======================================================================
-// DagHamiltonianPath — JS port + event stream
+// Adjacency helpers
 // =======================================================================
-//
-// Mirrors org.jgrapht.alg.hamiltonian.DagHamiltonianPath (Java).
-// 1. Detect any cycle via Kahn's algorithm. If a cycle exists, emit
-//    cycle-detected and stop.
-// 2. Topologically order the vertices.
-// 3. Sweep the topo order; for each vertex relax every incoming edge
-//    and record (longest, predecessor).
-// 4. Find the argmax of longest[v]. If longest[v*] == |V|, reconstruct
-//    the Hamiltonian path; otherwise emit no-ham.
 
 function buildAdjacency(g) {
+  // For directed graphs: out[u] holds out-neighbours; inc[v] holds
+  // in-neighbours. For undirected: both lists are identical and contain
+  // every neighbour.
   const n = g.nodes.length;
   const out = Array.from({ length: n }, () => []);
   const inc = Array.from({ length: n }, () => []);
   for (const [u, v] of g.edges) {
+    if (u === v) continue;
     out[u].push(v);
     inc[v].push(u);
+    if (!g.directed) {
+      out[v].push(u);
+      inc[u].push(v);
+    }
+  }
+  // Deduplicate (parallel edges collapse).
+  for (let i = 0; i < n; i++) {
+    out[i] = Array.from(new Set(out[i]));
+    inc[i] = Array.from(new Set(inc[i]));
   }
   return { out, inc };
 }
+
+// =======================================================================
+// DagHamiltonianPath — JS port (mirrors org.jgrapht.alg.hamiltonian.DagHamiltonianPath)
+// =======================================================================
 
 function runDag(g) {
   const events = [];
@@ -431,7 +607,6 @@ function runDag(g) {
   const indeg = Array(n).fill(0);
   for (const [, v] of g.edges) indeg[v]++;
 
-  // ---------- Phase 1: cycle check via Kahn's ----------
   events.push({
     type: "phase",
     phase: "cycle-check",
@@ -444,7 +619,6 @@ function runDag(g) {
   for (let v = 0; v < n; v++) if (indegLocal[v] === 0) queue.push(v);
 
   while (queue.length > 0) {
-    // Pop the smallest-id vertex to make the animation deterministic.
     queue.sort((a, b) => a - b);
     const u = queue.shift();
     order.push(u);
@@ -452,7 +626,7 @@ function runDag(g) {
       type: "topo-emit",
       vertex: u,
       position: order.length - 1,
-      message: `Vertex <code>${g.nodes[u].label}</code> has in-degree 0 — append it to the topological order (position ${order.length - 1}).`,
+      message: `Vertex <code>${g.nodes[u].label}</code> has in-degree 0 — append to topological order (position ${order.length - 1}).`,
     });
     for (const w of out[u]) {
       indegLocal[w]--;
@@ -467,20 +641,18 @@ function runDag(g) {
       type: "cycle-detected",
       stuck,
       message:
-        `Only ${order.length} of ${n} vertices could be emitted; the remaining ` +
+        `Only ${order.length} of ${n} vertices could be emitted; ` +
         `${stuck.map(v => "<code>" + g.nodes[v].label + "</code>").join(", ")} ` +
-        `participate in a cycle. This solver is DAG-only — no Hamiltonian path returned.`,
+        `participate in a cycle. DAG-only solver — no Hamiltonian path returned.`,
     });
     return { events, result: null };
   }
 
-  // ---------- Phase 2: longest-path DP ----------
   events.push({
     type: "phase",
     phase: "dp",
     message:
-      "Phase 2 — longest-path DP. Process vertices in topological order. " +
-      "For each <code>v</code>, relax every incoming edge <code>(u → v)</code>: " +
+      "Phase 2 — longest-path DP. For each <code>v</code> in topological order, relax every incoming edge <code>(u → v)</code>: " +
       "if <code>L(u) + 1 &gt; L(v)</code>, set <code>L(v) = L(u) + 1</code> and <code>pred(v) = u</code>.",
   });
 
@@ -494,7 +666,7 @@ function runDag(g) {
       type: "dp-vertex",
       vertex: v,
       currentL: L[v],
-      message: `Now processing <code>${g.nodes[v].label}</code> (topological position ${order.indexOf(v)}). Initial <code>L = 1</code>.`,
+      message: `Processing <code>${g.nodes[v].label}</code> (topological position ${order.indexOf(v)}). Initial <code>L = 1</code>.`,
     });
     for (const u of inc[v]) {
       edgesRelaxed++;
@@ -511,9 +683,7 @@ function runDag(g) {
         message: improved
           ? `Edge <code>${g.nodes[u].label} → ${g.nodes[v].label}</code>: ` +
             `<code>L(${g.nodes[u].label}) + 1 = ${candidate}</code> beats ` +
-            `current <code>L(${g.nodes[v].label}) = ${L[v]}</code> ⇒ ` +
-            `update <code>L(${g.nodes[v].label}) = ${candidate}</code>, ` +
-            `<code>pred(${g.nodes[v].label}) = ${g.nodes[u].label}</code>.`
+            `current <code>L(${g.nodes[v].label}) = ${L[v]}</code> ⇒ update.`
           : `Edge <code>${g.nodes[u].label} → ${g.nodes[v].label}</code>: ` +
             `<code>L(${g.nodes[u].label}) + 1 = ${candidate}</code> does not beat ` +
             `current <code>L(${g.nodes[v].label}) = ${L[v]}</code>. No update.`,
@@ -526,7 +696,6 @@ function runDag(g) {
     if (L[v] > L[bestEnd]) bestEnd = v;
   }
 
-  // ---------- Phase 3: existence test + reconstruct ----------
   const longest = L[bestEnd];
   if (longest < n) {
     events.push({
@@ -534,8 +703,7 @@ function runDag(g) {
       longest,
       bestEnd,
       message:
-        `DP finished. Longest path in the DAG has ${longest} vertices, ` +
-        `but the graph has ${n}. <code>${longest} &lt; ${n}</code> ⇒ ` +
+        `DP finished. Longest path = ${longest} vertices < ${n} ⇒ ` +
         `<b>no Hamiltonian path exists</b>.`,
     });
     return { events, result: null };
@@ -546,8 +714,7 @@ function runDag(g) {
     phase: "reconstruct",
     message:
       `Phase 3 — reconstruct. Longest path covers all ${n} vertices ` +
-      `(ends at <code>${g.nodes[bestEnd].label}</code>). ` +
-      `Walk back along <code>pred</code> to recover the Hamiltonian path.`,
+      `(ends at <code>${g.nodes[bestEnd].label}</code>). Walk back along <code>pred</code>.`,
   });
 
   const pathRev = [];
@@ -560,7 +727,7 @@ function runDag(g) {
       vertex: cursor,
       predecessor: prev,
       message: prev === -1
-        ? `Vertex <code>${g.nodes[cursor].label}</code> has no predecessor — start of the path.`
+        ? `Vertex <code>${g.nodes[cursor].label}</code> has no predecessor — start of path.`
         : `Step back from <code>${g.nodes[cursor].label}</code> via <code>pred</code> to <code>${g.nodes[prev].label}</code>.`,
     });
     cursor = prev;
@@ -570,13 +737,579 @@ function runDag(g) {
   events.push({
     type: "ham-found",
     path,
-    message:
-      `Hamiltonian path: <code class="seq">` +
-      path.map(v => g.nodes[v].label).join(" → ") +
-      `</code>`,
+    message: `Hamiltonian path: <code class="seq">` +
+      path.map(v => g.nodes[v].label).join(" → ") + `</code>`,
   });
 
-  return { events, result: { path, longest, edgesRelaxed } };
+  return { events, result: { path } };
+}
+
+// =======================================================================
+// Backtracking — common DFS core, parameterised by hyper-prunes
+// =======================================================================
+//
+// We implement two algorithms in one body, toggled by `opts`:
+//   opts.prechecks    : run the 5 cheap necessary-condition prechecks
+//   opts.mrv          : sort candidates by ascending onward degree
+//   opts.reachability : prune branches where unvisited vertices unreachable
+// "Vanilla" sets all three to false; "Full" sets all three to true.
+//
+// State emitted per step: current path prefix, candidate being tried,
+// per-event message. The "states" stat counts entries into extend().
+
+function runBacktracking(g, opts) {
+  const events = [];
+  const n = g.nodes.length;
+  const { out } = buildAdjacency(g);
+
+  let states = 0;
+  let backtracks = 0;
+  let foundPath = null;
+
+  // -------- Phase 1: prechecks (full only) --------
+  if (opts.prechecks) {
+    const pre = runPrechecks(g, events);
+    if (!pre.passed) {
+      // Precheck rejected — done.
+      events.push({
+        type: "reject-prechecks",
+        message: `No Hamiltonian path (rejected by prechecks).`,
+      });
+      return { events, result: null };
+    }
+  }
+
+  // -------- Phase 2: DFS from each candidate start --------
+  events.push({
+    type: "phase",
+    phase: "dfs",
+    message: opts.prechecks
+      ? "All prechecks passed. Starting depth-first search with " +
+        (opts.mrv ? "MRV candidate ordering" : "natural candidate order") +
+        (opts.reachability ? " and reachability prune." : ".")
+      : "Starting depth-first search (no prechecks, no candidate ordering, no prune).",
+  });
+
+  const path = [];
+  const visited = new Array(n).fill(false);
+  const MAX_STATES = 4000;  // hard cap so the viz remains tractable
+
+  function extend(depth) {
+    if (foundPath !== null) return true;
+    if (states >= MAX_STATES) return false;
+    states++;
+    if (depth === n) {
+      events.push({
+        type: "extend-success",
+        path: path.slice(),
+        states,
+        message:
+          `<b>Hamiltonian path found</b> after ${states} states: ` +
+          `<code class="seq">${path.map(v => g.nodes[v].label).join(" → ")}</code>.`,
+      });
+      foundPath = path.slice();
+      return true;
+    }
+    const current = path[depth - 1];
+
+    // -------- Optional: reachability prune --------
+    if (opts.reachability) {
+      const remaining = n - depth;
+      if (!allRemainingReachable(out, visited, current, remaining)) {
+        const unreached = [];
+        // Collect a few unreachable vertices for the message.
+        const reached = new Set([current]);
+        const queue = [current];
+        while (queue.length) {
+          const u = queue.shift();
+          for (const w of out[u]) if (!visited[w] && !reached.has(w)) {
+            reached.add(w);
+            queue.push(w);
+          }
+        }
+        for (let v = 0; v < n; v++) {
+          if (!visited[v] && !reached.has(v)) unreached.push(v);
+        }
+        events.push({
+          type: "extend-prune-unreachable",
+          current,
+          unreached,
+          message:
+            `From <code>${g.nodes[current].label}</code> the unvisited vertices ` +
+            unreached.map(v => "<code>" + g.nodes[v].label + "</code>").join(", ") +
+            ` cannot be reached through unvisited intermediaries — prune.`,
+        });
+        backtracks++;
+        return false;
+      }
+    }
+
+    // -------- Build candidate list --------
+    const rawCandidates = [];
+    for (const next of out[current]) {
+      if (!visited[next]) rawCandidates.push(next);
+    }
+    if (rawCandidates.length === 0) {
+      events.push({
+        type: "extend-deadend",
+        current,
+        message:
+          `Vertex <code>${g.nodes[current].label}</code> has no unvisited neighbours — dead end.`,
+      });
+      backtracks++;
+      return false;
+    }
+    let candidates = rawCandidates;
+    if (opts.mrv) {
+      // Sort by ascending onward degree (MRV), stable on input order.
+      const annotated = rawCandidates.map(v => ({
+        v,
+        deg: out[v].reduce((d, w) => d + (visited[w] ? 0 : 1), 0),
+      }));
+      annotated.sort((a, b) => a.deg - b.deg);
+      candidates = annotated.map(a => a.v);
+      events.push({
+        type: "extend-mrv-order",
+        current,
+        order: annotated,
+        message:
+          `MRV ordering at <code>${g.nodes[current].label}</code>: ` +
+          annotated.map(a =>
+            `<code>${g.nodes[a.v].label}</code> (deg ${a.deg})`
+          ).join(", ") + ".",
+      });
+    }
+
+    // -------- Try each candidate --------
+    for (const next of candidates) {
+      events.push({
+        type: "extend-try",
+        current,
+        next,
+        depth,
+        pathPrefix: path.slice(),
+        states,
+        message:
+          `Try extending ` +
+          `<code class="seq">${path.map(v => g.nodes[v].label).join(" → ")}</code>` +
+          ` with <code>${g.nodes[next].label}</code>.`,
+      });
+      visited[next] = true;
+      path.push(next);
+      if (extend(depth + 1)) return true;
+      path.pop();
+      visited[next] = false;
+      if (foundPath !== null) return true;
+      if (states >= MAX_STATES) return false;
+      events.push({
+        type: "extend-backtrack",
+        from: next,
+        to: current,
+        states,
+        backtracks: ++backtracks,
+        message:
+          `Backtrack: <code>${g.nodes[next].label}</code> led nowhere — ` +
+          `unwind to <code>${g.nodes[current].label}</code>.`,
+      });
+    }
+    return false;
+  }
+
+  for (let start = 0; start < n; start++) {
+    if (foundPath !== null) break;
+    if (states >= MAX_STATES) break;
+    path.length = 0;
+    visited.fill(false);
+    path.push(start);
+    visited[start] = true;
+    events.push({
+      type: "extend-start",
+      start,
+      message:
+        `Try starting from <code>${g.nodes[start].label}</code> (start ${start + 1} of ${n}).`,
+    });
+    extend(1);
+  }
+
+  if (foundPath !== null) {
+    return { events, result: { path: foundPath, states, backtracks } };
+  }
+  if (states >= MAX_STATES) {
+    events.push({
+      type: "abort-states",
+      states,
+      message:
+        `Aborted after ${states} states — visualisation cap. Vanilla DFS can be much more expensive than this on bigger graphs; the full solver would already have rejected via prechecks.`,
+    });
+    return { events, result: null };
+  }
+  events.push({
+    type: "no-ham",
+    states,
+    backtracks,
+    message:
+      `Exhausted DFS from every start vertex (${states} states, ${backtracks} backtracks) — <b>no Hamiltonian path</b>.`,
+  });
+  return { events, result: null };
+}
+
+// allRemainingReachable: BFS from `start` through unvisited vertices using
+// `out` adjacency; returns true if every unvisited vertex is reached.
+function allRemainingReachable(out, visited, start, remaining) {
+  if (remaining === 0) return true;
+  const n = visited.length;
+  const reached = new Array(n).fill(false);
+  reached[start] = true;
+  const queue = [start];
+  let found = 0;
+  while (queue.length) {
+    const u = queue.shift();
+    for (const v of out[u]) {
+      if (!reached[v] && !visited[v]) {
+        reached[v] = true;
+        queue.push(v);
+        found++;
+        if (found === remaining) return true;
+      }
+    }
+  }
+  return found === remaining;
+}
+
+// =======================================================================
+// Prechecks (full backtracking only)
+// =======================================================================
+//
+// Five necessary-condition prechecks; if any fails, no Hamiltonian path.
+// Each emits an event with passed: true/false and a message.
+
+function runPrechecks(g, events) {
+  if (!g.directed) {
+    // ---- Undirected: connectivity, degree-1, cut-vertex, bridge-tree ----
+    if (!isConnectedUndirected(g)) {
+      events.push({
+        type: "precheck-connectivity",
+        passed: false,
+        message: "Connectivity precheck: graph is <b>not connected</b> — no Hamiltonian path.",
+      });
+      return { passed: false };
+    }
+    events.push({
+      type: "precheck-connectivity",
+      passed: true,
+      message: "Connectivity precheck: graph is connected. ✓",
+    });
+
+    const leafCount = countDegree1(g);
+    if (leafCount > 2) {
+      events.push({
+        type: "precheck-degree",
+        passed: false,
+        leafCount,
+        message: `Degree-1 precheck: ${leafCount} vertices have degree 1 (max allowed: 2) — no Hamiltonian path.`,
+      });
+      return { passed: false };
+    }
+    events.push({
+      type: "precheck-degree",
+      passed: true,
+      leafCount,
+      message: `Degree-1 precheck: ${leafCount} ≤ 2 leaves. ✓`,
+    });
+
+    const cv = cutVertexBlockCheck(g);
+    if (!cv.passed) {
+      events.push({
+        type: "precheck-cut-vertex",
+        passed: false,
+        vertex: cv.vertex,
+        blockCount: cv.blockCount,
+        message:
+          `Cut-vertex precheck: vertex <code>${g.nodes[cv.vertex].label}</code> ` +
+          `sits in ${cv.blockCount} biconnected blocks (max allowed: 2) — no Hamiltonian path.`,
+      });
+      return { passed: false };
+    }
+    events.push({
+      type: "precheck-cut-vertex",
+      passed: true,
+      message: "Cut-vertex precheck: every cut vertex is in ≤ 2 blocks. ✓",
+    });
+
+    const bt = bridgeTreeCheck(g);
+    if (!bt.passed) {
+      events.push({
+        type: "precheck-bridge-tree",
+        passed: false,
+        message:
+          `Bridge-tree precheck: a 2-edge-connected component has ${bt.degree} incident bridges (max 2) — no Hamiltonian path.`,
+      });
+      return { passed: false };
+    }
+    events.push({
+      type: "precheck-bridge-tree",
+      passed: true,
+      message: "Bridge-tree precheck: each component has ≤ 2 incident bridges. ✓",
+    });
+  } else {
+    // ---- Directed: SCC condensation admits Hamiltonian path ----
+    const scc = sccCondensationCheck(g);
+    if (!scc.passed) {
+      events.push({
+        type: "precheck-scc",
+        passed: false,
+        longest: scc.longest,
+        componentCount: scc.componentCount,
+        message:
+          `SCC condensation precheck: condensation has ${scc.componentCount} components ` +
+          `but its longest path is ${scc.longest} — no Hamiltonian path.`,
+      });
+      return { passed: false };
+    }
+    events.push({
+      type: "precheck-scc",
+      passed: true,
+      componentCount: scc.componentCount,
+      message:
+        `SCC condensation precheck: ${scc.componentCount} components, condensation admits a Hamiltonian path. ✓`,
+    });
+  }
+  return { passed: true };
+}
+
+function isConnectedUndirected(g) {
+  const n = g.nodes.length;
+  if (n === 0) return true;
+  const { out } = buildAdjacency(g);
+  const seen = new Array(n).fill(false);
+  const queue = [0];
+  seen[0] = true;
+  let count = 1;
+  while (queue.length) {
+    const u = queue.shift();
+    for (const v of out[u]) if (!seen[v]) {
+      seen[v] = true;
+      queue.push(v);
+      count++;
+    }
+  }
+  return count === n;
+}
+
+function countDegree1(g) {
+  const n = g.nodes.length;
+  const deg = new Array(n).fill(0);
+  for (const [u, v] of g.edges) {
+    if (u === v) continue;
+    deg[u]++;
+    deg[v]++;
+  }
+  let leaves = 0;
+  for (let i = 0; i < n; i++) if (deg[i] === 1) leaves++;
+  return leaves;
+}
+
+// Cut vertex / biconnected components via Tarjan's BCC algorithm.
+// Returns { passed, vertex?, blockCount? }.
+function cutVertexBlockCheck(g) {
+  const n = g.nodes.length;
+  const { out } = buildAdjacency(g);
+  const disc = new Array(n).fill(-1);
+  const low = new Array(n).fill(-1);
+  const parent = new Array(n).fill(-1);
+  let timer = 0;
+  // For each vertex, count the BCCs containing it.
+  const blocksOf = Array.from({ length: n }, () => new Set());
+  let blockId = 0;
+  const edgeStack = [];
+
+  function dfs(u) {
+    disc[u] = low[u] = timer++;
+    let children = 0;
+    for (const v of out[u]) {
+      if (disc[v] === -1) {
+        parent[v] = u;
+        children++;
+        edgeStack.push([u, v]);
+        dfs(v);
+        low[u] = Math.min(low[u], low[v]);
+        const isRootArt   = (parent[u] === -1 && children > 1);
+        const isInnerArt  = (parent[u] !== -1 && low[v] >= disc[u]);
+        if (isRootArt || isInnerArt) {
+          // Pop one BCC.
+          const bccVerts = new Set();
+          while (edgeStack.length) {
+            const [a, b] = edgeStack.pop();
+            bccVerts.add(a); bccVerts.add(b);
+            if (a === u && b === v) break;
+          }
+          for (const x of bccVerts) blocksOf[x].add(blockId);
+          blockId++;
+        }
+      } else if (v !== parent[u] && disc[v] < disc[u]) {
+        edgeStack.push([u, v]);
+        low[u] = Math.min(low[u], disc[v]);
+      }
+    }
+  }
+
+  for (let s = 0; s < n; s++) {
+    if (disc[s] === -1) {
+      dfs(s);
+      // Drain any remaining edges into a final BCC.
+      if (edgeStack.length) {
+        const bccVerts = new Set();
+        while (edgeStack.length) {
+          const [a, b] = edgeStack.pop();
+          bccVerts.add(a); bccVerts.add(b);
+        }
+        for (const x of bccVerts) blocksOf[x].add(blockId);
+        blockId++;
+      }
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    if (blocksOf[i].size > 2) {
+      return { passed: false, vertex: i, blockCount: blocksOf[i].size };
+    }
+  }
+  return { passed: true };
+}
+
+// Bridge tree degree check via Tarjan's bridge-finding.
+function bridgeTreeCheck(g) {
+  const n = g.nodes.length;
+  const { out } = buildAdjacency(g);
+  const disc = new Array(n).fill(-1);
+  const low  = new Array(n).fill(-1);
+  let timer = 0;
+  const bridges = []; // edges u<v as [u,v]
+
+  function dfs(u, parentEdgeOther) {
+    disc[u] = low[u] = timer++;
+    let parentUsed = false;
+    for (const v of out[u]) {
+      if (disc[v] === -1) {
+        dfs(v, u);
+        low[u] = Math.min(low[u], low[v]);
+        if (low[v] > disc[u]) {
+          bridges.push([Math.min(u, v), Math.max(u, v)]);
+        }
+      } else if (v !== parentEdgeOther || parentUsed) {
+        low[u] = Math.min(low[u], disc[v]);
+      } else {
+        parentUsed = true;
+      }
+    }
+  }
+
+  for (let s = 0; s < n; s++) if (disc[s] === -1) dfs(s, -1);
+  if (bridges.length <= 2) return { passed: true };
+
+  // Compute 2-edge-connected components: connected components of the
+  // graph with bridges removed.
+  const bridgeSet = new Set(bridges.map(([a, b]) => a + ":" + b));
+  function isBridge(a, b) {
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    return bridgeSet.has(lo + ":" + hi);
+  }
+  const comp = new Array(n).fill(-1);
+  let cid = 0;
+  for (let s = 0; s < n; s++) {
+    if (comp[s] !== -1) continue;
+    comp[s] = cid;
+    const q = [s];
+    while (q.length) {
+      const u = q.shift();
+      for (const v of out[u]) {
+        if (comp[v] !== -1) continue;
+        if (isBridge(u, v)) continue;
+        comp[v] = cid;
+        q.push(v);
+      }
+    }
+    cid++;
+  }
+  // Count incident bridges per component (undirected — each bridge bumps
+  // both endpoints' components).
+  const incidence = new Array(cid).fill(0);
+  for (const [a, b] of bridges) {
+    incidence[comp[a]]++;
+    if (comp[a] !== comp[b]) incidence[comp[b]]++;
+  }
+  for (let i = 0; i < cid; i++) {
+    if (incidence[i] > 2) return { passed: false, degree: incidence[i] };
+  }
+  return { passed: true };
+}
+
+// SCC condensation Hamiltonian-path test (Kosaraju + longest-path DP).
+function sccCondensationCheck(g) {
+  const n = g.nodes.length;
+  // Kosaraju.
+  const out = Array.from({ length: n }, () => []);
+  const inv = Array.from({ length: n }, () => []);
+  for (const [u, v] of g.edges) {
+    if (u === v) continue;
+    out[u].push(v);
+    inv[v].push(u);
+  }
+  const order = [];
+  const visited1 = new Array(n).fill(false);
+  function dfs1(u) {
+    visited1[u] = true;
+    for (const v of out[u]) if (!visited1[v]) dfs1(v);
+    order.push(u);
+  }
+  for (let i = 0; i < n; i++) if (!visited1[i]) dfs1(i);
+  const sccId = new Array(n).fill(-1);
+  let cid = 0;
+  function dfs2(u) {
+    sccId[u] = cid;
+    for (const v of inv[u]) if (sccId[v] === -1) dfs2(v);
+  }
+  for (let i = order.length - 1; i >= 0; i--) {
+    const u = order[i];
+    if (sccId[u] === -1) { dfs2(u); cid++; }
+  }
+  const numScc = cid;
+  if (numScc <= 1) return { passed: true, componentCount: numScc, longest: numScc };
+
+  // Build condensation DAG.
+  const cOut = Array.from({ length: numScc }, () => new Set());
+  const cInc = Array.from({ length: numScc }, () => new Set());
+  for (const [u, v] of g.edges) {
+    if (u === v) continue;
+    if (sccId[u] !== sccId[v]) {
+      cOut[sccId[u]].add(sccId[v]);
+      cInc[sccId[v]].add(sccId[u]);
+    }
+  }
+  // Topological order via Kahn.
+  const indeg = new Array(numScc).fill(0);
+  for (let i = 0; i < numScc; i++) indeg[i] = cInc[i].size;
+  const q = [];
+  for (let i = 0; i < numScc; i++) if (indeg[i] === 0) q.push(i);
+  const topo = [];
+  while (q.length) {
+    const u = q.shift();
+    topo.push(u);
+    for (const v of cOut[u]) {
+      indeg[v]--;
+      if (indeg[v] === 0) q.push(v);
+    }
+  }
+  // Longest-path DP.
+  const L = new Array(numScc).fill(1);
+  let best = 1;
+  for (const v of topo) {
+    for (const u of cInc[v]) {
+      if (L[u] + 1 > L[v]) L[v] = L[u] + 1;
+    }
+    if (L[v] > best) best = L[v];
+  }
+  return { passed: best === numScc, componentCount: numScc, longest: best };
 }
 
 // =======================================================================
@@ -596,27 +1329,34 @@ function paneState() {
     g: null,
     events: [],
     iEvt: 0,
-    // Per-vertex / per-edge styling state, updated as events apply.
-    finalised: new Set(),       // vertices whose DP cell is finalised
-    current: -1,                // vertex being processed this step
-    considering: null,          // [u, v] edge being relaxed this step
-    cycleStuck: new Set(),      // vertices flagged as cycle members
-    topoOrder: [],              // topo order so far
-    pred: {},                   // current predecessor map (rendered as edge-tree)
-    path: [],                   // reconstructed Hamiltonian path (gold)
-    pathSet: new Set(),         // for fast membership
-    pathEdges: new Set(),       // "u->v" strings
+    finalised: new Set(),
+    current: -1,
+    considering: null,
+    rejected: null,                    // [u,v] edge just backtracked from
+    cycleStuck: new Set(),
+    rejectedVertex: -1,                // vertex highlighted as precheck-failed
+    topoOrder: [],
+    pred: {},                          // current predecessor map (DP)
+    path: [],                          // current DFS prefix OR reconstructed path
+    pathSet: new Set(),
+    pathEdges: new Set(),
+    visited: new Set(),                // for backtracking — visited on current DFS
+    statsDepth: 0,
+    statsStates: 0,
+    statsBacktracks: 0,
     statsLongest: 0,
-    statsEdgesRelaxed: 0,
+    statsRelaxed: 0,
     phaseLabel: "—",
     finished: false,
+    rejected_msg: null,
+    algo: null,
   };
 }
 
 function applyEvent(state, ev) {
-  // mutate state from a single event payload
   state.current = -1;
   state.considering = null;
+  state.rejected = null;
   switch (ev.type) {
     case "phase":
       state.phaseLabel = ev.phase;
@@ -636,22 +1376,18 @@ function applyEvent(state, ev) {
     case "dp-relax":
       state.current = ev.v;
       state.considering = [ev.u, ev.v];
-      state.statsEdgesRelaxed = ev.edgesRelaxed;
+      state.statsRelaxed = ev.edgesRelaxed;
       if (ev.improved) {
-        // Remove any prior predecessor edge for v from pred-tree.
-        const oldPred = state.pred[ev.v];
-        if (oldPred !== undefined && oldPred !== null) {
-          delete state.pred[ev.v];
-        }
         state.pred[ev.v] = ev.u;
         if (ev.candidate > state.statsLongest) state.statsLongest = ev.candidate;
       }
       break;
     case "no-ham":
       state.finished = true;
+      if (ev.states !== undefined) state.statsStates = ev.states;
+      if (ev.backtracks !== undefined) state.statsBacktracks = ev.backtracks;
       break;
     case "reconstruct-step":
-      // Mark this vertex as part of the path; record incoming edge.
       state.path.unshift(ev.vertex);
       state.pathSet.add(ev.vertex);
       if (ev.predecessor !== -1) {
@@ -668,6 +1404,92 @@ function applyEvent(state, ev) {
       }
       state.finished = true;
       break;
+    // -------- Backtracking events --------
+    case "precheck-connectivity":
+    case "precheck-degree":
+    case "precheck-cut-vertex":
+    case "precheck-bridge-tree":
+    case "precheck-scc":
+      state.phaseLabel = ev.passed ? "prechecks" : "rejected";
+      if (!ev.passed) {
+        state.finished = true;
+        if (ev.vertex !== undefined) state.rejectedVertex = ev.vertex;
+        state.rejected_msg = ev.message;
+      }
+      break;
+    case "reject-prechecks":
+      state.finished = true;
+      break;
+    case "extend-start":
+      state.phaseLabel = "dfs";
+      state.path = [ev.start];
+      state.pathSet = new Set([ev.start]);
+      state.visited = new Set([ev.start]);
+      state.pathEdges = new Set();
+      state.current = ev.start;
+      state.statsDepth = 1;
+      break;
+    case "extend-mrv-order":
+      state.current = ev.current;
+      break;
+    case "extend-try":
+      state.current = ev.current;
+      state.considering = [ev.current, ev.next];
+      break;
+    case "extend-backtrack":
+      // Remove the last vertex from path and its edge.
+      const popped = state.path.pop();
+      state.pathSet.delete(popped);
+      state.visited.delete(popped);
+      const last = state.path[state.path.length - 1];
+      if (last !== undefined) {
+        state.pathEdges.delete(last + "->" + popped);
+        state.current = last;
+      }
+      state.statsStates = ev.states;
+      state.statsBacktracks = ev.backtracks;
+      state.statsDepth = state.path.length;
+      state.rejected = [last, popped];
+      break;
+    case "extend-prune-unreachable":
+      state.current = ev.current;
+      break;
+    case "extend-deadend":
+      state.current = ev.current;
+      break;
+    case "extend-success":
+      state.path = ev.path.slice();
+      state.pathSet = new Set(ev.path);
+      state.visited = new Set(ev.path);
+      state.pathEdges = new Set();
+      for (let i = 0; i + 1 < ev.path.length; i++) {
+        state.pathEdges.add(ev.path[i] + "->" + ev.path[i + 1]);
+      }
+      state.statsStates = ev.states;
+      state.statsDepth = ev.path.length;
+      state.finished = true;
+      break;
+    case "abort-states":
+      state.finished = true;
+      state.statsStates = ev.states;
+      break;
+  }
+
+  // For backtracking, when an "extend-try" succeeds we need to advance
+  // the visible path. Detect: the *next* event is extend-try at deeper
+  // depth, or extend-success. The simplest approach: just sync path
+  // from the event's pathPrefix if provided.
+  if (ev.type === "extend-try") {
+    // Make pane state path match the prefix + candidate.
+    state.path = ev.pathPrefix.concat([ev.next]);
+    state.pathSet = new Set(state.path);
+    state.visited = new Set(state.path);
+    state.pathEdges = new Set();
+    for (let i = 0; i + 1 < state.path.length; i++) {
+      state.pathEdges.add(state.path[i] + "->" + state.path[i + 1]);
+    }
+    state.statsDepth = state.path.length;
+    state.statsStates = ev.states;
   }
 }
 
@@ -684,34 +1506,43 @@ function draw(state, canvas) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // Extra bottom padding leaves room for labels rendered below the circles
-  // (long labels overflow the node disc and are drawn underneath).
   const padX = 36, padTop = 28, padBot = 36;
   const xy = (n) => ({
     x: padX + n.x * (w - 2 * padX),
     y: padTop + n.y * (h - padTop - padBot),
   });
 
+  const directed = !!state.g.directed;
+
   // Edges
   for (const [u, v] of state.g.edges) {
     const a = xy(state.g.nodes[u]);
     const b = xy(state.g.nodes[v]);
-    const onPath = state.pathEdges.has(u + "->" + v);
+    const eKey = u + "->" + v;
+    const eKeyRev = v + "->" + u;
+    const onPath = state.pathEdges.has(eKey) ||
+                   (!directed && state.pathEdges.has(eKeyRev));
     const inPredTree = state.pred[v] === u && !onPath;
-    const considering = state.considering && state.considering[0] === u && state.considering[1] === v;
+    const considering = state.considering &&
+      ((state.considering[0] === u && state.considering[1] === v) ||
+       (!directed && state.considering[0] === v && state.considering[1] === u));
+    const rejected = state.rejected &&
+      ((state.rejected[0] === u && state.rejected[1] === v) ||
+       (!directed && state.rejected[0] === v && state.rejected[1] === u));
 
     let color = "var(--edge)";
     let width = 1.5;
-    let dashed = false;
     if (onPath) {
       color = "var(--edge-accepted)"; width = 3.5;
+    } else if (rejected) {
+      color = "var(--edge-banned)"; width = 2.5;
     } else if (inPredTree) {
       color = "var(--edge-tree)"; width = 2.5;
     } else if (considering) {
       color = "var(--edge-considered)"; width = 3;
     }
 
-    drawEdge(ctx, a, b, color, width, dashed);
+    drawEdge(ctx, a, b, color, width, directed);
   }
 
   // Nodes
@@ -721,10 +1552,9 @@ function draw(state, canvas) {
     let stroke = "var(--node-stroke)";
     let strokeWidth = 1.5;
 
-    if (state.cycleStuck.has(n.id)) {
+    if (state.cycleStuck.has(n.id) || state.rejectedVertex === n.id) {
       fill = "var(--node-impossible)"; stroke = "var(--bad)"; strokeWidth = 2;
     } else if (state.pathSet.has(n.id)) {
-      // Path: first vertex blue, last vertex purple, middle green-ish.
       if (state.path.length && n.id === state.path[0]) {
         fill = "var(--node-source)"; stroke = "var(--accent)"; strokeWidth = 2;
       } else if (state.path.length && n.id === state.path[state.path.length - 1]) {
@@ -742,34 +1572,32 @@ function draw(state, canvas) {
   }
 }
 
-function drawEdge(ctx, a, b, colorVar, width, dashed) {
-  // Resolve CSS var via a hidden helper.
+function drawEdge(ctx, a, b, colorVar, width, directed) {
   const color = cssVarValue(colorVar);
   ctx.save();
   ctx.lineWidth = width;
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  if (dashed) ctx.setLineDash([6, 4]);
-  // Shorten so the arrow head doesn't overlap the destination circle.
   const dx = b.x - a.x, dy = b.y - a.y;
   const dist = Math.hypot(dx, dy);
   const nx = dx / dist, ny = dy / dist;
   const startX = a.x + nx * NODE_RADIUS;
   const startY = a.y + ny * NODE_RADIUS;
-  const endX = b.x - nx * (NODE_RADIUS + 4);
-  const endY = b.y - ny * (NODE_RADIUS + 4);
+  const endX   = b.x - nx * (NODE_RADIUS + (directed ? 4 : 0));
+  const endY   = b.y - ny * (NODE_RADIUS + (directed ? 4 : 0));
   ctx.beginPath();
   ctx.moveTo(startX, startY);
   ctx.lineTo(endX, endY);
   ctx.stroke();
-  // Arrow head
-  const ah = 8, aw = 5;
-  ctx.beginPath();
-  ctx.moveTo(endX, endY);
-  ctx.lineTo(endX - nx * ah + ny * aw, endY - ny * ah - nx * aw);
-  ctx.lineTo(endX - nx * ah - ny * aw, endY - ny * ah + nx * aw);
-  ctx.closePath();
-  ctx.fill();
+  if (directed) {
+    const ah = 8, aw = 5;
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - nx * ah + ny * aw, endY - ny * ah - nx * aw);
+    ctx.lineTo(endX - nx * ah - ny * aw, endY - ny * ah + nx * aw);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -784,7 +1612,6 @@ function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = stroke;
   ctx.stroke();
-  // Label: render inside the disc when it fits, otherwise below it.
   const label = node.label || String(node.id);
   ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
   ctx.textAlign = "center";
@@ -795,7 +1622,6 @@ function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
     ctx.textBaseline = "middle";
     ctx.fillText(label, x, y);
   } else {
-    // Disc shows just an index/dot; label rendered underneath.
     ctx.fillStyle = "#9aa4ba";
     ctx.textBaseline = "middle";
     ctx.font = "600 10px -apple-system, 'Segoe UI', system-ui, sans-serif";
@@ -821,11 +1647,12 @@ function cssVarValue(v) {
 }
 
 // =======================================================================
-// UI wiring
+// UI wiring (dual-pane)
 // =======================================================================
 
 const ui = {
-  algo:     document.getElementById("algo"),
+  algoA:    document.getElementById("algoA"),
+  algoB:    document.getElementById("algoB"),
   example:  document.getElementById("example"),
   run:      document.getElementById("run"),
   play:     document.getElementById("play"),
@@ -836,145 +1663,220 @@ const ui = {
   speed:    document.getElementById("speed"),
   speedLbl: document.getElementById("speedLbl"),
   progress: document.getElementById("progress"),
+
+  paneA:    document.getElementById("paneA"),
+  paneB:    document.getElementById("paneB"),
   canvasA:  document.getElementById("canvasA"),
+  canvasB:  document.getElementById("canvasB"),
   A_h2:     document.getElementById("A_h2"),
-  A_lbl0:   document.getElementById("A_lbl0"),
-  A_lbl1:   document.getElementById("A_lbl1"),
-  A_lbl2:   document.getElementById("A_lbl2"),
-  A_lbl3:   document.getElementById("A_lbl3"),
-  A_slot0:  document.getElementById("A_slot0"),
-  A_slot1:  document.getElementById("A_slot1"),
-  A_slot2:  document.getElementById("A_slot2"),
-  A_slot3:  document.getElementById("A_slot3"),
-  statusA:  document.getElementById("statusA"),
+  B_h2:     document.getElementById("B_h2"),
+  A_lbl0: document.getElementById("A_lbl0"), A_lbl1: document.getElementById("A_lbl1"),
+  A_lbl2: document.getElementById("A_lbl2"), A_lbl3: document.getElementById("A_lbl3"),
+  B_lbl0: document.getElementById("B_lbl0"), B_lbl1: document.getElementById("B_lbl1"),
+  B_lbl2: document.getElementById("B_lbl2"), B_lbl3: document.getElementById("B_lbl3"),
+  A_slot0: document.getElementById("A_slot0"), A_slot1: document.getElementById("A_slot1"),
+  A_slot2: document.getElementById("A_slot2"), A_slot3: document.getElementById("A_slot3"),
+  B_slot0: document.getElementById("B_slot0"), B_slot1: document.getElementById("B_slot1"),
+  B_slot2: document.getElementById("B_slot2"), B_slot3: document.getElementById("B_slot3"),
+  statusA:    document.getElementById("statusA"),
+  statusB:    document.getElementById("statusB"),
   eventInfoA: document.getElementById("eventInfoA"),
-  A_paths:  document.getElementById("A_paths"),
+  eventInfoB: document.getElementById("eventInfoB"),
+  A_paths:    document.getElementById("A_paths"),
+  B_paths:    document.getElementById("B_paths"),
 };
 
 const state = {
   paneA: paneState(),
+  paneB: paneState(),
   playing: false,
   timer: null,
 };
 
-function populateExamples(algo) {
-  const list = EXAMPLES_PER_ALGO[algo] || [];
-  const prev = ui.example.value;
-  ui.example.innerHTML = "";
-  for (const item of list) {
-    const opt = document.createElement("option");
-    opt.value = item.key;
-    opt.textContent = item.label;
-    ui.example.appendChild(opt);
-  }
-  if (list.some(e => e.key === prev)) ui.example.value = prev;
+function runAlgo(algo, g) {
+  if (algo === "dag") return runDag(g);
+  if (algo === "bt-naive") return runBacktracking(g, { prechecks: false, mrv: false, reachability: false });
+  if (algo === "bt-full")  return runBacktracking(g, { prechecks: true,  mrv: true,  reachability: true  });
+  throw new Error("unknown algo " + algo);
 }
 
-function updateHeader() {
-  const algo = ui.algo.value;
-  const info = ALGO_INFO[algo] || ALGO_INFO.dag;
-  ui.A_h2.innerHTML =
-    escapeHtml(info.h2) + " <span class=\"badge\">" + escapeHtml(info.badge) + "</span>";
-  ui.A_lbl0.textContent = info.slotLabels[0];
-  ui.A_lbl1.textContent = info.slotLabels[1];
-  ui.A_lbl2.textContent = info.slotLabels[2];
-  ui.A_lbl3.textContent = info.slotLabels[3];
+function populateExamples() {
+  const list = examplesForPair(ui.algoA.value, ui.algoB.value);
+  const prev = ui.example.value;
+  ui.example.innerHTML = "";
+  for (const key of list) {
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = EXAMPLE_LABELS[key] || key;
+    ui.example.appendChild(opt);
+  }
+  if (list.includes(prev)) ui.example.value = prev;
+}
+
+function updateHeader(algo, side) {
+  const info = ALGO_INFO[algo];
+  const h2 = side === "A" ? ui.A_h2 : ui.B_h2;
+  h2.innerHTML = escapeHtml(info.h2) +
+    ' <span class="badge">' + escapeHtml(info.badge) + '</span>';
+  const lbls = side === "A"
+    ? [ui.A_lbl0, ui.A_lbl1, ui.A_lbl2, ui.A_lbl3]
+    : [ui.B_lbl0, ui.B_lbl1, ui.B_lbl2, ui.B_lbl3];
+  lbls[0].textContent = info.slotLabels[0];
+  lbls[1].textContent = info.slotLabels[1];
+  lbls[2].textContent = info.slotLabels[2];
+  lbls[3].textContent = info.slotLabels[3];
 }
 
 function updateSlots() {
-  const s = state.paneA;
-  ui.A_slot0.textContent = s.phaseLabel;
-  ui.A_slot1.textContent = s.g ? s.g.nodes.length : 0;
-  ui.A_slot2.textContent = s.statsLongest;
-  ui.A_slot3.textContent = s.statsEdgesRelaxed;
+  const sA = state.paneA, sB = state.paneB;
+  const fmt = (s, algo) => {
+    if (algo === "dag") {
+      return [s.phaseLabel, s.g ? s.g.nodes.length : 0, s.statsLongest, s.statsRelaxed];
+    }
+    return [s.phaseLabel, s.statsDepth, s.statsStates, s.statsBacktracks];
+  };
+  const [a0, a1, a2, a3] = fmt(sA, sA.algo);
+  ui.A_slot0.textContent = a0; ui.A_slot1.textContent = a1;
+  ui.A_slot2.textContent = a2; ui.A_slot3.textContent = a3;
+  const [b0, b1, b2, b3] = fmt(sB, sB.algo);
+  ui.B_slot0.textContent = b0; ui.B_slot1.textContent = b1;
+  ui.B_slot2.textContent = b2; ui.B_slot3.textContent = b3;
 }
 
 function loadAndRun() {
-  const algo = ui.algo.value;
-  if (algo !== "dag") return; // others not yet implemented
+  const algoA = ui.algoA.value;
+  const algoB = ui.algoB.value;
   const exKey = ui.example.value;
-  const spec = EXAMPLES[exKey]();
-  const { events } = runDag(spec);
+  if (!exKey) return;
+  const specA = EXAMPLES[exKey]();
+  const specB = EXAMPLES[exKey]();
+
+  let evA, evB;
+  try { evA = runAlgo(algoA, specA).events; }
+  catch (e) { evA = [{ type: "no-ham", message: e.message }]; }
+  try { evB = runAlgo(algoB, specB).events; }
+  catch (e) { evB = [{ type: "no-ham", message: e.message }]; }
 
   state.paneA = paneState();
-  state.paneA.g = spec;
-  state.paneA.events = events;
-  state.paneA.iEvt = 0;
+  state.paneA.g = specA;
+  state.paneA.events = evA;
+  state.paneA.algo = algoA;
 
-  ui.statusA.textContent = spec.title + " — " + spec.hint;
+  state.paneB = paneState();
+  state.paneB.g = specB;
+  state.paneB.events = evB;
+  state.paneB.algo = algoB;
+
+  ui.statusA.textContent = specA.title + " — " + specA.hint;
+  ui.statusB.textContent = specB.title + " — " + specB.hint;
   ui.eventInfoA.innerHTML =
-    "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + events.length + " events.";
+    "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
+  ui.eventInfoB.innerHTML =
+    "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
   ui.A_paths.innerHTML = "";
+  ui.B_paths.innerHTML = "";
 
-  updateHeader();
+  updateHeader(algoA, "A");
+  updateHeader(algoB, "B");
   updateSlots();
   draw(state.paneA, ui.canvasA);
+  draw(state.paneB, ui.canvasB);
   setProgress();
 }
 
 function setProgress() {
-  ui.progress.textContent = "step " + state.paneA.iEvt + " / " + state.paneA.events.length;
+  const total = Math.max(state.paneA.events.length, state.paneB.events.length);
+  const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
+  ui.progress.textContent = "step " + cur + " / " + total;
 }
 
-function stepForward() {
-  const s = state.paneA;
-  if (s.iEvt >= s.events.length) {
-    pause();
-    return false;
-  }
+function stepPane(s, infoEl, canvas, pathsEl) {
+  if (s.iEvt >= s.events.length) return false;
   const ev = s.events[s.iEvt];
   applyEvent(s, ev);
   s.iEvt++;
-  ui.eventInfoA.innerHTML = ev.message;
-  updateSlots();
-  draw(s, ui.canvasA);
-  setProgress();
-  if (ev.type === "ham-found" || ev.type === "no-ham" || ev.type === "cycle-detected") {
-    renderResult(s);
+  infoEl.innerHTML = ev.message || "";
+  draw(s, canvas);
+  if (ev.type === "ham-found" || ev.type === "no-ham" || ev.type === "extend-success" ||
+      ev.type === "cycle-detected" || ev.type === "reject-prechecks" || ev.type === "abort-states") {
+    renderResult(s, pathsEl);
   }
   return true;
 }
 
-function stepBackward() {
-  // Rebuild state from event 0 .. i-2.
-  const s = state.paneA;
-  if (s.iEvt === 0) return;
-  const target = s.iEvt - 1;
-  const replay = paneState();
-  replay.g = s.g;
-  replay.events = s.events;
-  replay.iEvt = 0;
-  for (let i = 0; i < target; i++) {
-    applyEvent(replay, replay.events[i]);
-    replay.iEvt++;
+function stepForward() {
+  let any = false;
+  if (state.paneA.iEvt < state.paneA.events.length) {
+    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.A_paths) || any;
   }
-  state.paneA = replay;
-  // Show the message for the event we just stepped back into (the prior step's message).
-  ui.eventInfoA.innerHTML =
-    target === 0
-      ? "At step 0 — graph loaded, no events applied yet."
-      : s.events[target - 1].message;
+  if (state.paneB.iEvt < state.paneB.events.length) {
+    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.B_paths) || any;
+  }
   updateSlots();
-  draw(state.paneA, ui.canvasA);
   setProgress();
-  ui.A_paths.innerHTML = "";
+  if (!any) pause();
+  return any;
 }
 
-function renderResult(s) {
-  ui.A_paths.innerHTML = "";
-  if (s.path.length === 0) {
+function stepBackward() {
+  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
+  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths);
+  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths);
+  updateSlots();
+  setProgress();
+}
+
+function rebuildToStep(s, target, infoEl, canvas, pathsEl) {
+  const g = s.g, evs = s.events, algo = s.algo;
+  const fresh = paneState();
+  fresh.g = g; fresh.events = evs; fresh.algo = algo;
+  const limit = Math.min(target, evs.length);
+  for (let i = 0; i < limit; i++) {
+    applyEvent(fresh, evs[i]);
+  }
+  fresh.iEvt = limit;
+  s.g = fresh.g; s.events = fresh.events; s.algo = fresh.algo;
+  s.iEvt = fresh.iEvt;
+  s.finalised = fresh.finalised; s.current = fresh.current;
+  s.considering = fresh.considering; s.rejected = fresh.rejected;
+  s.cycleStuck = fresh.cycleStuck; s.rejectedVertex = fresh.rejectedVertex;
+  s.topoOrder = fresh.topoOrder; s.pred = fresh.pred;
+  s.path = fresh.path; s.pathSet = fresh.pathSet; s.pathEdges = fresh.pathEdges;
+  s.visited = fresh.visited;
+  s.statsDepth = fresh.statsDepth; s.statsStates = fresh.statsStates;
+  s.statsBacktracks = fresh.statsBacktracks;
+  s.statsLongest = fresh.statsLongest; s.statsRelaxed = fresh.statsRelaxed;
+  s.phaseLabel = fresh.phaseLabel; s.finished = fresh.finished;
+  infoEl.innerHTML = limit === 0
+    ? "At step 0 — graph loaded, no events applied yet."
+    : (evs[limit - 1].message || "");
+  draw(s, canvas);
+  pathsEl.innerHTML = "";
+}
+
+function renderResult(s, pathsEl) {
+  pathsEl.innerHTML = "";
+  if (s.path.length === 0 || (s.finished && s.path.length < (s.g ? s.g.nodes.length : 0) && !s.pathSet.size)) {
     const li = document.createElement("li");
     li.textContent = "No Hamiltonian path.";
-    li.style.color = "var(--bad)";
-    ui.A_paths.appendChild(li);
+    li.className = "reject";
+    pathsEl.appendChild(li);
+    return;
+  }
+  if (s.path.length < (s.g ? s.g.nodes.length : 0)) {
+    // Partial path (e.g. precheck-rejected mid-DFS visualisation).
+    const li = document.createElement("li");
+    li.textContent = "No Hamiltonian path.";
+    li.className = "reject";
+    pathsEl.appendChild(li);
     return;
   }
   const li = document.createElement("li");
   li.innerHTML =
-    "<span class=\"seq\">" +
+    '<span class="seq">' +
     s.path.map(v => s.g.nodes[v].label).join(" → ") +
-    "</span> &nbsp;<span style=\"color:var(--muted)\">(" + s.path.length + " vertices)</span>";
-  ui.A_paths.appendChild(li);
+    '</span> &nbsp;<span style="color:var(--muted)">(' + s.path.length + ' vertices)</span>';
+  pathsEl.appendChild(li);
 }
 
 function play() {
@@ -1001,25 +1903,12 @@ function pause() {
 
 function reset() {
   pause();
-  state.paneA.iEvt = 0;
-  // Reset all visual state by replaying zero events.
-  const s = state.paneA;
-  const fresh = paneState();
-  fresh.g = s.g;
-  fresh.events = s.events;
-  state.paneA = fresh;
-  ui.eventInfoA.innerHTML = "Reset. Press <b>Play</b> ▶ to begin.";
-  ui.A_paths.innerHTML = "";
-  updateSlots();
-  draw(state.paneA, ui.canvasA);
-  setProgress();
+  loadAndRun();
 }
 
 // ---- Event bindings ----
-ui.algo.addEventListener("change", () => {
-  populateExamples(ui.algo.value);
-  updateHeader();
-});
+ui.algoA.addEventListener("change", () => { populateExamples(); loadAndRun(); });
+ui.algoB.addEventListener("change", () => { populateExamples(); loadAndRun(); });
 ui.example.addEventListener("change", () => loadAndRun());
 ui.run.addEventListener("click", () => loadAndRun());
 ui.play.addEventListener("click", play);
@@ -1030,11 +1919,13 @@ ui.reset.addEventListener("click", reset);
 ui.speed.addEventListener("input", () => {
   ui.speedLbl.textContent = ui.speed.value + " ms/step";
 });
-window.addEventListener("resize", () => draw(state.paneA, ui.canvasA));
+window.addEventListener("resize", () => {
+  draw(state.paneA, ui.canvasA);
+  draw(state.paneB, ui.canvasB);
+});
 
 // ---- Initial load ----
-populateExamples(ui.algo.value);
-updateHeader();
+populateExamples();
 loadAndRun();
 </script>
 

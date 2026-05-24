@@ -20,7 +20,7 @@ relevant terminology.
 | Path | Topic | Algorithms |
 |------|-------|------------|
 | [`/shortest-paths/`](shortest-paths/) | **Shortest paths** | Yen, Eppstein, Bounded-pruned Yen + A\*, Dijkstra, A\*, `AllDirectedPaths` with forward pruning |
-| [`/hamiltonian/`](hamiltonian/) | **Hamiltonian path** *(preview — DAG only so far)* | Polynomial DAG longest-path. Coming soon: Backtracking (with SCC / bridge-tree / reachability prechecks), Held-Karp subset DP |
+| [`/hamiltonian/`](hamiltonian/) | **Hamiltonian path** | Backtracking (vanilla and with connectivity / degree-1 / cut-vertex / bridge-tree / SCC condensation prechecks + MRV + reachability prune), polynomial DAG longest-path. Coming soon: Held-Karp subset DP |
 
 Each topic page reproduces the algorithms exactly as they're implemented in
 [JGraphT][jgrapht].
@@ -72,7 +72,7 @@ Canonical URL: <https://algo-visualization.jgrapht.org/>.
 |------|---------|
 | `index.html` | Navigation homepage (cards linking to each topic). |
 | `shortest-paths/index.html` | The shortest-paths visualization (single self-contained HTML). |
-| `hamiltonian/index.html` | The Hamiltonian-path visualization (DAG mode live; Backtracking + Held-Karp coming). |
+| `hamiltonian/index.html` | The Hamiltonian-path visualization (Backtracking vanilla + full and DAG longest-path live; Held-Karp coming). |
 | `favicon.ico`, `apple-touch-icon.png` | Site icons (referenced as `/favicon.ico` etc. from every page). |
 | `CNAME` | Custom-domain claim for `algo-visualization.jgrapht.org`. |
 | `.nojekyll` | Empty marker so GitHub Pages skips Jekyll. |
