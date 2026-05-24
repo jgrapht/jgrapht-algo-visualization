@@ -20,21 +20,24 @@
     --grid: #2a3142;
     --edge: #4a5066;
     --edge-active: #6cb3ff;
-    --edge-considered: #f3c04a;
-    --edge-accepted: #ffd166;
-    --edge-tree: #8a7a3a;
+    --edge-considered: #5fc2c9;     /* cyan/teal — distinct from gold accept */
+    --edge-accepted: #ffd166;       /* gold — final reconstructed path */
+    --edge-tree: #7a6c9c;           /* muted indigo — predecessor scaffolding */
     --node-fill: #2a3142;
     --node-stroke: #6c7488;
     --node-explored: #8ee08e;
-    --node-active: #f3c04a;
+    --node-active: #f0884a;         /* orange — current focus, contrasts with gold */
     --node-impossible: #d8595e;
     --node-source: #6cb3ff;
     --node-target: #c58cf0;
   }
   html, body { background: var(--bg); color: var(--ink); margin: 0; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  /* Sticky header + controls so they remain visible while scrolling. */
   header {
     padding: 8px 14px; border-bottom: 1px solid #232838;
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 6;
+    background: var(--bg);
   }
   header h1 { font-size: 14px; margin: 0; font-weight: 600; }
   header h1 a { color: var(--muted); text-decoration: none; }
@@ -44,6 +47,7 @@
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
     padding: 6px 14px; background: var(--panel); border-bottom: 1px solid #232838;
     font-size: 12px;
+    position: sticky; top: 33px; z-index: 5;
   }
   .controls label { color: var(--muted); margin-left: 6px; }
   .controls select, .controls button, .controls input[type=range] {
@@ -72,7 +76,7 @@
   .panes { display: grid; grid-template-columns: 1fr; gap: 10px; padding: 10px; }
   .pane {
     background: var(--panel); border: 1px solid #232838; border-radius: 10px;
-    display: flex; flex-direction: column; min-height: 420px;
+    display: flex; flex-direction: column;
   }
   .pane h2 {
     margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
@@ -92,7 +96,11 @@
   .pane .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; min-height: 24px; }
   .pane .stat .v { color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1; }
   .pane canvas {
-    flex: 1 1 auto; width: 100%; height: 100%; min-height: 380px;
+    /* Cap canvas height so the event narrative stays in viewport without
+       scrolling. min-height keeps it readable on tall layouts. */
+    width: 100%;
+    height: min(38vh, 320px);
+    min-height: 200px;
     display: block; background: #0c0f15;
   }
   .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
@@ -277,20 +285,21 @@
 
 const EXAMPLES = {
 
-  // ----- Pipeline DAG: plan -> design -> build -> test -> ship -----
+  // ----- Pipeline DAG: brainstorm -> design -> plan -> build -> test -> ship.
   // Single source, single sink, perfectly linear -- the easiest possible
   // Hamiltonian path.
   pipeline: () => ({
     title: "Pipeline (linear chain, Ham exists)",
     nodes: [
-      { id: 0, x: 0.10, y: 0.50, label: "plan"   },
-      { id: 1, x: 0.30, y: 0.50, label: "design" },
-      { id: 2, x: 0.50, y: 0.50, label: "build"  },
-      { id: 3, x: 0.70, y: 0.50, label: "test"   },
-      { id: 4, x: 0.90, y: 0.50, label: "ship"   },
+      { id: 0, x: 0.07, y: 0.50, label: "brainstorm" },
+      { id: 1, x: 0.24, y: 0.50, label: "design"     },
+      { id: 2, x: 0.41, y: 0.50, label: "plan"       },
+      { id: 3, x: 0.58, y: 0.50, label: "build"      },
+      { id: 4, x: 0.76, y: 0.50, label: "test"       },
+      { id: 5, x: 0.93, y: 0.50, label: "ship"       },
     ],
     edges: [
-      [0, 1], [1, 2], [2, 3], [3, 4],
+      [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],
     ],
     hasCycle: false,
     hint: "Trivial DAG Hamiltonian path: every step has exactly one successor.",
@@ -675,10 +684,12 @@ function draw(state, canvas) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  const pad = 32;
+  // Extra bottom padding leaves room for labels rendered below the circles
+  // (long labels overflow the node disc and are drawn underneath).
+  const padX = 36, padTop = 28, padBot = 36;
   const xy = (n) => ({
-    x: pad + n.x * (w - 2 * pad),
-    y: pad + n.y * (h - 2 * pad),
+    x: padX + n.x * (w - 2 * padX),
+    y: padTop + n.y * (h - padTop - padBot),
   });
 
   // Edges
@@ -773,11 +784,27 @@ function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
   ctx.lineWidth = strokeWidth;
   ctx.strokeStyle = stroke;
   ctx.stroke();
-  ctx.fillStyle = "#e6e8ef";
+  // Label: render inside the disc when it fits, otherwise below it.
+  const label = node.label || String(node.id);
   ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(node.label || String(node.id), x, y);
+  const tw = ctx.measureText(label).width;
+  const fitsInside = tw <= NODE_RADIUS * 2 - 6;
+  if (fitsInside) {
+    ctx.fillStyle = "#e6e8ef";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, x, y);
+  } else {
+    // Disc shows just an index/dot; label rendered underneath.
+    ctx.fillStyle = "#9aa4ba";
+    ctx.textBaseline = "middle";
+    ctx.font = "600 10px -apple-system, 'Segoe UI', system-ui, sans-serif";
+    ctx.fillText("·", x, y);
+    ctx.fillStyle = "#e6e8ef";
+    ctx.font = "600 11px -apple-system, 'Segoe UI', system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillText(label, x, y + NODE_RADIUS + 4);
+  }
   ctx.restore();
 }
 
