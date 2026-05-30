@@ -5,6 +5,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+.claude/
 
 # Local dev servers / dumps
 node_modules/
