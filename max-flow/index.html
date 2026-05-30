@@ -70,7 +70,7 @@
   .controls .transport button:disabled { color: #555a6a; cursor: default; }
   .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
   .panes { display: grid; gap: 10px; padding: 10px; grid-template-columns: 1fr 1fr; }
-  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } .results .row { grid-template-columns: 1fr; } }
   .pane { background: var(--panel); border: 1px solid #232838; border-radius: 10px; display: flex; flex-direction: column; }
   .pane h2 {
     margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
@@ -88,11 +88,16 @@
   .pane canvas { width: 100%; height: min(42vh, 360px); min-height: 220px; display: block; background: #0c0f15; }
   .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
   .pane .event-info {
-    padding: 8px 12px; font-size: 12px; line-height: 1.55; color: #c0c6d6;
-    border-top: 1px solid #232838; background: #11151d; min-height: 38px;
+    padding: 7px 12px; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d;
+    min-height: 56px; max-height: 96px; overflow-y: auto;
   }
+  .pane .event-info .line { font-size: 11.5px; line-height: 1.45; opacity: 0.42; margin: 1px 0; }
+  .pane .event-info .line.cur { font-size: 13.5px; line-height: 1.5; opacity: 1; color: #e6e8ef; font-weight: 500; }
   .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .pane.done .event-info { background: #0f1f17; }
+  .controls #progress.done { color: var(--accent2); font-weight: 600; }
+  .controls input[type=range].scrub { width: 160px; accent-color: var(--accent); }
   .legend {
     display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
     background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
@@ -150,8 +155,13 @@
   <label for="speed">Speed</label>
   <input id="speed" type="range" min="60" max="1200" value="480" step="20">
   <span id="speedLbl" class="sub">480 ms/step</span>
+  <label for="scrub">Scrub</label>
+  <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" title="Drag to scrub through steps">
   <span class="spacer"></span>
   <span id="progress" class="sub">step 0 / 0</span>
+</div>
+<div class="sr-hint" style="padding:2px 14px;font-size:11px;color:var(--muted);background:var(--panel);border-bottom:1px solid #232838">
+  Keys: <b>Space</b> play/pause · <b>←</b>/<b>→</b> step · drag <b>Scrub</b> to jump.
 </div>
 
 <div class="panes" id="panes">
@@ -190,14 +200,14 @@
 </div>
 
 <div class="legend">
-  <span><span class="ln" style="border-top-color:var(--edge-path)"></span>augmenting path (push forward)</span>
-  <span><span class="ln" style="border-top-color:var(--edge-reverse)"></span>residual reverse push (cancel flow)</span>
-  <span><span class="ln" style="border-top-color:var(--edge-search)"></span>BFS / level-graph edge</span>
-  <span><span class="ln" style="border-top-color:var(--edge-flow)"></span>carries flow</span>
-  <span><span class="ln" style="border-top-color:var(--edge-sat)"></span>saturated (flow = capacity)</span>
-  <span><span class="ln" style="border-top-color:var(--edge-cut)"></span>min-cut edge</span>
-  <span><span class="sw" style="background:var(--node-source)"></span>source</span>
-  <span><span class="sw" style="background:var(--node-sink)"></span>sink</span>
+  <span data-role="path"><span class="ln" style="border-top-color:var(--edge-path);border-top-style:dashed;border-top-width:3px"></span>augmenting path (animated, push forward)</span>
+  <span data-role="reverse"><span class="ln" style="border-top-color:var(--edge-reverse);border-top-style:dashed"></span>residual reverse push (cancel flow)</span>
+  <span data-role="search"><span class="ln" style="border-top-color:var(--edge-search);border-top-style:dotted"></span>BFS / level-graph edge</span>
+  <span data-role="flow"><span class="ln" style="border-top-color:var(--edge-flow);border-top-width:2px"></span>carries flow</span>
+  <span data-role="sat"><span class="ln" style="border-top-color:var(--edge-sat);border-top-width:4px"></span>saturated (flow = capacity)</span>
+  <span data-role="cut"><span class="ln" style="border-top-color:var(--edge-cut);border-top-width:5px"></span>min-cut edge</span>
+  <span data-role="source"><span class="sw" style="background:var(--node-source);border-radius:50%"></span>source (round)</span>
+  <span data-role="sink"><span class="sw" style="background:var(--node-sink);border-radius:50%"></span>sink (round)</span>
   <span style="color:var(--muted)">edge label = flow / capacity</span>
 </div>
 
@@ -789,16 +799,18 @@ function draw(state, canvas) {
     const onPath = state.pathArcs[ei] !== undefined;
     const inCut = state.cutEdges.has(ei);
 
-    let color = "var(--edge)", width = 1.5;
-    if (inCut) { color = "var(--edge-cut)"; width = 4; }
+    // Each role is distinguished by width + dash pattern (not colour alone), so
+    // the rendering survives colour-blindness; the augmenting path also animates.
+    let color = "var(--edge)", width = 1.5, dash = null, animated = false;
+    if (inCut) { color = "var(--edge-cut)"; width = 5; }
     else if (onPath) {
       color = state.pathArcs[ei] > 0 ? "var(--edge-path)" : "var(--edge-reverse)";
-      width = 3.5;
-    } else if (state.searchEdges.has(ei)) { color = "var(--edge-search)"; width = 2.5; }
-    else if (f >= cap - EPS && f > EPS) { color = "var(--edge-sat)"; width = 2; }
+      width = 3.5; dash = [7, 5]; animated = true;
+    } else if (state.searchEdges.has(ei)) { color = "var(--edge-search)"; width = 2.5; dash = [2, 4]; }
+    else if (f >= cap - EPS && f > EPS) { color = "var(--edge-sat)"; width = 4; }
     else if (f > EPS) { color = "var(--edge-flow)"; width = 2; }
 
-    drawEdge(ctx, a, b, color, width);
+    drawEdge(ctx, a, b, color, width, dash, animated);
     drawFlowLabel(ctx, a, b, f, cap, onPath || inCut);
   });
 
@@ -823,7 +835,7 @@ function draw(state, canvas) {
   }
 }
 
-function drawEdge(ctx, a, b, colorVar, width) {
+function drawEdge(ctx, a, b, colorVar, width, dash, animated) {
   const color = cssVarValue(colorVar);
   ctx.save();
   ctx.lineWidth = width;
@@ -834,11 +846,14 @@ function drawEdge(ctx, a, b, colorVar, width) {
   const nx = dx / dist, ny = dy / dist;
   const sx = a.x + nx * NODE_RADIUS, sy = a.y + ny * NODE_RADIUS;
   const ex = b.x - nx * (NODE_RADIUS + 4), ey = b.y - ny * (NODE_RADIUS + 4);
+  if (dash) ctx.setLineDash(dash);
+  if (animated) ctx.lineDashOffset = -(performance.now() / 45) % 1000;  // flow toward the sink
   ctx.beginPath();
   ctx.moveTo(sx, sy);
   ctx.lineTo(ex, ey);
   ctx.stroke();
-  // arrowhead
+  ctx.setLineDash([]);
+  // arrowhead (always solid)
   const ah = 9, aw = 5.5;
   ctx.beginPath();
   ctx.moveTo(ex, ey);
@@ -857,7 +872,7 @@ function drawFlowLabel(ctx, a, b, flow, cap, emphasize) {
   const ox = -dy / dist * 10, oy = dx / dist * 10;
   const text = flow + "/" + cap;
   ctx.save();
-  ctx.font = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.font = (emphasize ? "700 12px" : "600 11px") + " ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const tw = ctx.measureText(text).width;
@@ -934,7 +949,7 @@ const ui = {
   pause: document.getElementById("pause"), step: document.getElementById("step"),
   stepBack: document.getElementById("stepBack"), reset: document.getElementById("reset"),
   speed: document.getElementById("speed"), speedLbl: document.getElementById("speedLbl"),
-  progress: document.getElementById("progress"),
+  scrub: document.getElementById("scrub"), progress: document.getElementById("progress"),
   paneA: document.getElementById("paneA"), paneB: document.getElementById("paneB"),
   canvasA: document.getElementById("canvasA"), canvasB: document.getElementById("canvasB"),
   A_h2: document.getElementById("A_h2"), B_h2: document.getElementById("B_h2"),
@@ -1018,20 +1033,62 @@ function loadAndRun() {
   ui.paneB.classList.remove("done");
   ui.statusA.textContent = specA.title + " — " + specA.hint;
   ui.statusB.textContent = specB.title + " — " + specB.hint;
-  ui.eventInfoA.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
-  ui.eventInfoB.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
+  renderNarration(ui.eventInfoA, state.paneA);
+  renderNarration(ui.eventInfoB, state.paneB);
   ui.A_paths.innerHTML = ""; ui.B_paths.innerHTML = "";
 
   updateHeader(algoA, "A"); updateHeader(algoB, "B");
+  updateLegend();
   updateSlots();
   draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB);
   setProgress();
 }
 
+// Show the last few step messages, the current one emphasised, so a viewer who
+// looks away keeps the thread. Reconstructs from events, so it survives seeking.
+function renderNarration(infoEl, s) {
+  const K = 4, end = s.iEvt, start = Math.max(0, end - K);
+  if (end === 0) { infoEl.innerHTML = '<div class="line cur">Step 0 — loaded. Press Play or Step.</div>'; return; }
+  let html = "";
+  for (let i = start; i < end; i++)
+    html += '<div class="line' + (i === end - 1 ? ' cur' : '') + '">' + (s.events[i].message || "") + '</div>';
+  infoEl.innerHTML = html;
+  infoEl.scrollTop = infoEl.scrollHeight;
+}
+
 function setProgress() {
   const total = Math.max(state.paneA.events.length, state.paneB.events.length);
   const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
-  ui.progress.textContent = "step " + cur + " / " + total;
+  const done = state.paneA.iEvt >= state.paneA.events.length && state.paneB.iEvt >= state.paneB.events.length;
+  ui.progress.textContent = (done ? "✓ done · " : "") + "step " + cur + " / " + total;
+  ui.progress.classList.toggle("done", done);
+  ui.scrub.max = total; ui.scrub.value = cur;
+}
+
+// Which legend roles actually occur in the loaded run — used to hide inactive keys.
+function rolesPresent(events, g) {
+  const r = new Set(["source", "sink"]);
+  let flow = null;
+  for (const ev of events) {
+    if (ev.type === "ek-discover" || ev.type === "dinic-level") r.add("search");
+    if (ev.type === "ek-path" || ev.type === "dinic-path") r.add("path");
+    if (ev.type === "mincut") r.add("cut");
+    if ((ev.type === "ek-augment" || ev.type === "dinic-augment") && ev.path)
+      for (const arc of ev.path) if (arc.dir < 0) r.add("reverse");
+    if (ev.flow) flow = ev.flow;
+  }
+  if (flow) for (let ei = 0; ei < g.edges.length; ei++) {
+    if (flow[ei] > EPS) r.add("flow");
+    if (flow[ei] >= g.edges[ei][2] - EPS && flow[ei] > EPS) r.add("sat");
+  }
+  return r;
+}
+function updateLegend() {
+  const roles = new Set();
+  [state.paneA, state.paneB].forEach(s => { if (s.g) rolesPresent(s.events, s.g).forEach(x => roles.add(x)); });
+  document.querySelectorAll(".legend span[data-role]").forEach(el => {
+    el.style.display = roles.has(el.dataset.role) ? "" : "none";
+  });
 }
 
 function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
@@ -1039,7 +1096,7 @@ function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
   const ev = s.events[s.iEvt];
   applyEvent(s, ev);
   s.iEvt++;
-  infoEl.innerHTML = ev.message || "";
+  renderNarration(infoEl, s);
   draw(s, canvas);
   if (ev.type === "flow-done") { renderResult(s, pathsEl); paneEl.classList.add("done"); }
   return true;
@@ -1056,8 +1113,9 @@ function stepForward() {
   return any;
 }
 
-function stepBackward() {
-  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
+function stepBackward() { seekTo(Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1)); }
+
+function seekTo(target) {
   rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA);
   rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB);
   updateSlots(); setProgress();
@@ -1072,9 +1130,7 @@ function rebuildToStep(s, target, infoEl, canvas, pathsEl, paneEl) {
   for (let i = 0; i < limit; i++) applyEvent(fresh, evs[i]);
   fresh.iEvt = limit;
   for (const k in fresh) s[k] = fresh[k];
-  infoEl.innerHTML = limit === 0
-    ? "At step 0 — network loaded, no events applied yet."
-    : (evs[limit - 1].message || "");
+  renderNarration(infoEl, s);
   paneEl.classList.toggle("done", s.finished);
   draw(s, canvas);
   if (s.finished) renderResult(s, pathsEl); else pathsEl.innerHTML = "";
@@ -1131,7 +1187,25 @@ ui.step.addEventListener("click", () => { pause(); stepForward(); });
 ui.stepBack.addEventListener("click", () => { pause(); stepBackward(); });
 ui.reset.addEventListener("click", reset);
 ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+ui.scrub.addEventListener("input", () => { pause(); seekTo(parseInt(ui.scrub.value, 10)); });
 window.addEventListener("resize", () => { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); });
+
+// Keyboard: Space = play/pause, ←/→ = step. Ignore when focused in a control.
+window.addEventListener("keydown", (e) => {
+  const t = (e.target.tagName || "").toUpperCase();
+  if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); state.playing ? pause() : play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); pause(); stepForward(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); pause(); stepBackward(); }
+});
+
+// Animate the dashes along the current augmenting path (only while one is shown).
+function dashTick() {
+  const need = Object.keys(state.paneA.pathArcs || {}).length || Object.keys(state.paneB.pathArcs || {}).length;
+  if (need) { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); }
+  requestAnimationFrame(dashTick);
+}
+requestAnimationFrame(dashTick);
 
 populateExamples();
 loadAndRun();
