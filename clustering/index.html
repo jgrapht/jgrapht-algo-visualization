@@ -61,7 +61,7 @@
   .controls .transport button:disabled { color: #555a6a; cursor: default; }
   .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
   .panes { display: grid; gap: 10px; padding: 10px; grid-template-columns: 1fr 1fr; }
-  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } .results .row { grid-template-columns: 1fr; } }
   .pane { background: var(--panel); border: 1px solid #232838; border-radius: 10px; display: flex; flex-direction: column; }
   .pane h2 {
     margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
@@ -79,11 +79,16 @@
   .pane canvas { width: 100%; height: min(44vh, 380px); min-height: 240px; display: block; background: #0c0f15; }
   .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
   .pane .event-info {
-    padding: 8px 12px; font-size: 12px; line-height: 1.55; color: #c0c6d6;
-    border-top: 1px solid #232838; background: #11151d; min-height: 38px;
+    padding: 7px 12px; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d;
+    min-height: 56px; max-height: 96px; overflow-y: auto;
   }
+  .pane .event-info .line { font-size: 11.5px; line-height: 1.45; opacity: 0.42; margin: 1px 0; }
+  .pane .event-info .line.cur { font-size: 13.5px; line-height: 1.5; opacity: 1; color: #e6e8ef; font-weight: 500; }
   .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .pane.done .event-info { background: #0f1f17; }
+  .controls #progress.done { color: var(--accent2); font-weight: 600; }
+  .controls input[type=range].scrub { width: 160px; accent-color: var(--accent); }
   .legend {
     display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
     background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
@@ -140,8 +145,13 @@
   <label for="speed">Speed</label>
   <input id="speed" type="range" min="60" max="1200" value="460" step="20">
   <span id="speedLbl" class="sub">460 ms/step</span>
+  <label for="scrub">Scrub</label>
+  <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" title="Drag to scrub through steps">
   <span class="spacer"></span>
   <span id="progress" class="sub">step 0 / 0</span>
+</div>
+<div class="sr-hint" style="padding:2px 14px;font-size:11px;color:var(--muted);background:var(--panel);border-bottom:1px solid #232838">
+  Keys: <b>Space</b> play/pause · <b>←</b>/<b>→</b> step · drag <b>Scrub</b> to jump.
 </div>
 
 <div class="panes" id="panes">
@@ -180,10 +190,10 @@
 </div>
 
 <div class="legend">
-  <span><span class="ln" style="border-top-color:var(--edge-intra)"></span>edge inside a community</span>
-  <span><span class="ln" style="border-top-color:var(--edge-inter)"></span>edge between communities</span>
-  <span><span class="sw" style="background:var(--node-active)"></span>vertex / community moving this step</span>
-  <span style="color:var(--muted)">node fill = community · stats show modularity Q</span>
+  <span data-role="intra"><span class="ln" style="border-top-color:var(--edge-intra);border-top-style:solid;border-top-width:4px"></span>edge inside a community</span>
+  <span data-role="inter"><span class="ln" style="border-top-color:var(--edge-inter);border-top-style:dotted"></span>edge between communities</span>
+  <span data-role="moving"><span class="sw" style="background:var(--node-active);border-radius:50%"></span>vertex / community moving this step</span>
+  <span data-role="community" style="color:var(--muted)">node fill = community · stats show modularity Q</span>
 </div>
 
 <details class="explainer" id="glossaryWrap" open>
@@ -600,7 +610,7 @@ const ui = {
   pause: document.getElementById("pause"), step: document.getElementById("step"),
   stepBack: document.getElementById("stepBack"), reset: document.getElementById("reset"),
   speed: document.getElementById("speed"), speedLbl: document.getElementById("speedLbl"),
-  progress: document.getElementById("progress"),
+  scrub: document.getElementById("scrub"), progress: document.getElementById("progress"),
   paneA: document.getElementById("paneA"), paneB: document.getElementById("paneB"),
   canvasA: document.getElementById("canvasA"), canvasB: document.getElementById("canvasB"),
   A_h2: document.getElementById("A_h2"), B_h2: document.getElementById("B_h2"),
@@ -679,27 +689,65 @@ function loadAndRun() {
   ui.paneA.classList.remove("done"); ui.paneB.classList.remove("done");
   ui.statusA.textContent = specA.title + " — " + specA.hint;
   ui.statusB.textContent = specB.title + " — " + specB.hint;
-  ui.eventInfoA.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
-  ui.eventInfoB.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
+  renderNarration(ui.eventInfoA, state.paneA);
+  renderNarration(ui.eventInfoB, state.paneB);
   ui.A_paths.innerHTML = ""; ui.B_paths.innerHTML = "";
 
   updateHeader(algoA, "A"); updateHeader(algoB, "B");
+  updateLegend();
   updateSlots();
   draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB);
   setProgress();
 }
 
+// Show the last few step messages, the current one emphasised, so a viewer who
+// looks away keeps the thread. Reconstructs from events, so it survives seeking.
+function renderNarration(infoEl, s) {
+  const K = 4, end = s.iEvt, start = Math.max(0, end - K);
+  if (end === 0) { infoEl.innerHTML = '<div class="line cur">Step 0 — loaded. Press Play or Step.</div>'; return; }
+  let html = "";
+  for (let i = start; i < end; i++)
+    html += '<div class="line' + (i === end - 1 ? ' cur' : '') + '">' + (s.events[i].message || "") + '</div>';
+  infoEl.innerHTML = html;
+  infoEl.scrollTop = infoEl.scrollHeight;
+}
+
 function setProgress() {
   const total = Math.max(state.paneA.events.length, state.paneB.events.length);
   const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
-  ui.progress.textContent = "step " + cur + " / " + total;
+  const done = state.paneA.iEvt >= state.paneA.events.length && state.paneB.iEvt >= state.paneB.events.length;
+  ui.progress.textContent = (done ? "✓ done · " : "") + "step " + cur + " / " + total;
+  ui.progress.classList.toggle("done", done);
+  ui.scrub.max = total; ui.scrub.value = cur;
+}
+
+// Which legend roles actually occur in the loaded run. All of intra/inter/moving/
+// community are present for both Louvain modes, so this simply shows every tagged
+// role; the data-role + shape cues remain the colour-blind win and keep structure.
+function rolesPresent(events, g) {
+  const r = new Set(["community"]);
+  for (const ev of events) {
+    if (ev.type === "move") { r.add("moving"); r.add("intra"); r.add("inter"); }
+    if (ev.comm) { r.add("intra"); r.add("inter"); }
+  }
+  // Any graph with at least one edge has both an inside-community and a between
+  // edge at some point during the run; show all four to keep the key complete.
+  if (g && g.edges.length) { r.add("intra"); r.add("inter"); }
+  return r;
+}
+function updateLegend() {
+  const roles = new Set();
+  [state.paneA, state.paneB].forEach(s => { if (s.g) rolesPresent(s.events, s.g).forEach(x => roles.add(x)); });
+  document.querySelectorAll(".legend span[data-role]").forEach(el => {
+    el.style.display = roles.has(el.dataset.role) ? "" : "none";
+  });
 }
 
 function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
   if (s.iEvt >= s.events.length) return false;
   const ev = s.events[s.iEvt];
   applyEvent(s, ev); s.iEvt++;
-  infoEl.innerHTML = ev.message || "";
+  renderNarration(infoEl, s);
   draw(s, canvas);
   if (ev.type === "done") { renderResult(s, pathsEl); paneEl.classList.add("done"); }
   return true;
@@ -716,8 +764,9 @@ function stepForward() {
   return any;
 }
 
-function stepBackward() {
-  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
+function stepBackward() { seekTo(Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1)); }
+
+function seekTo(target) {
   rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA);
   rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB);
   updateSlots(); setProgress();
@@ -731,7 +780,7 @@ function rebuildToStep(s, target, infoEl, canvas, pathsEl, paneEl) {
   for (let i = 0; i < limit; i++) applyEvent(fresh, evs[i]);
   fresh.iEvt = limit;
   for (const k in fresh) s[k] = fresh[k];
-  infoEl.innerHTML = limit === 0 ? "At step 0 — graph loaded, no events applied yet." : (evs[limit - 1].message || "");
+  renderNarration(infoEl, s);
   paneEl.classList.toggle("done", s.finished);
   draw(s, canvas);
   if (s.finished) renderResult(s, pathsEl); else pathsEl.innerHTML = "";
@@ -786,7 +835,17 @@ ui.step.addEventListener("click", () => { pause(); stepForward(); });
 ui.stepBack.addEventListener("click", () => { pause(); stepBackward(); });
 ui.reset.addEventListener("click", reset);
 ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+ui.scrub.addEventListener("input", () => { pause(); seekTo(parseInt(ui.scrub.value, 10)); });
 window.addEventListener("resize", () => { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); });
+
+// Keyboard: Space = play/pause, ←/→ = step. Ignore when focused in a control.
+window.addEventListener("keydown", (e) => {
+  const t = (e.target.tagName || "").toUpperCase();
+  if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); state.playing ? pause() : play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); pause(); stepForward(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); pause(); stepBackward(); }
+});
 
 populateExamples();
 loadAndRun();
