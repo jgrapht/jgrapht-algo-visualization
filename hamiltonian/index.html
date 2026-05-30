@@ -82,6 +82,7 @@
   }
   @media (max-width: 900px) {
     .panes { grid-template-columns: 1fr; }
+    .results .row { grid-template-columns: 1fr; }
   }
   .panes.single { grid-template-columns: 1fr; }
   .pane {
@@ -114,19 +115,25 @@
   }
   .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
   .pane .event-info {
-    padding: 8px 12px; font-size: 12px; line-height: 1.55;
-    color: #c0c6d6; border-top: 1px solid #232838;
-    background: #11151d; min-height: 38px;
+    padding: 7px 12px; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d;
+    min-height: 56px; max-height: 96px; overflow-y: auto;
   }
+  .pane .event-info .line { font-size: 11.5px; line-height: 1.45; opacity: 0.42; margin: 1px 0; }
+  .pane .event-info .line.cur { font-size: 13.5px; line-height: 1.5; opacity: 1; color: #e6e8ef; font-weight: 500; }
   .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
   .pane.done .event-info { background: #0f1f17; }
   .pane.rejected .event-info { background: #1f1417; }
+  .controls #progress.done { color: var(--accent2); font-weight: 600; }
+  .controls input[type=range].scrub { width: 160px; accent-color: var(--accent); }
   .legend {
     display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
     background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
     font-size: 11px; color: var(--muted);
   }
   .legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .legend .sw.round { border-radius: 50%; }
+  .legend .ln { display: inline-block; width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; margin-right: 4px; vertical-align: middle; }
   details.explainer {
     margin: 10px; background: var(--panel); border: 1px solid #232838; border-radius: 10px;
   }
@@ -192,8 +199,13 @@
   <label for="speed">Speed</label>
   <input id="speed" type="range" min="60" max="1200" value="450" step="20">
   <span id="speedLbl" class="sub">450 ms/step</span>
+  <label for="scrub">Scrub</label>
+  <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" title="Drag to scrub through steps">
   <span class="spacer"></span>
   <span id="progress" class="sub">step 0 / 0</span>
+</div>
+<div class="sr-hint" style="padding:2px 14px;font-size:11px;color:var(--muted);background:var(--panel);border-bottom:1px solid #232838">
+  Keys: <b>Space</b> play/pause · <b>←</b>/<b>→</b> step · drag <b>Scrub</b> to jump.
 </div>
 
 <div class="panes" id="panes">
@@ -234,15 +246,15 @@
 </div>
 
 <div class="legend">
-  <span><span class="sw" style="background:var(--node-source)"></span>start of path</span>
-  <span><span class="sw" style="background:var(--node-target)"></span>end of path</span>
-  <span><span class="sw" style="background:var(--node-active)"></span>current vertex (this step)</span>
-  <span><span class="sw" style="background:var(--node-explored)"></span>visited on current DFS path</span>
-  <span><span class="sw" style="background:var(--node-impossible)"></span>cycle member / precheck-failed</span>
-  <span><span class="sw" style="background:var(--edge-considered)"></span>edge being considered</span>
-  <span><span class="sw" style="background:var(--edge-accepted)"></span>edge on reconstructed/accepted path</span>
-  <span><span class="sw" style="background:var(--edge-tree)"></span>predecessor pointer (DP)</span>
-  <span><span class="sw" style="background:var(--edge-banned)"></span>backtracked edge (just rejected)</span>
+  <span data-role="start"><span class="sw round" style="background:var(--node-source)"></span>start of path (round)</span>
+  <span data-role="end"><span class="sw round" style="background:var(--node-target)"></span>end of path (round)</span>
+  <span data-role="current"><span class="sw round" style="background:var(--node-active)"></span>current vertex this step (round)</span>
+  <span data-role="visited"><span class="sw round" style="background:var(--node-explored)"></span>visited on current DFS path (round)</span>
+  <span data-role="impossible"><span class="sw round" style="background:var(--node-impossible)"></span>cycle member / precheck-failed (round)</span>
+  <span data-role="considered"><span class="ln" style="border-top-color:var(--edge-considered);border-top-style:dotted;border-top-width:3px"></span>edge being considered (dotted)</span>
+  <span data-role="accepted"><span class="ln" style="border-top-color:var(--edge-accepted);border-top-width:4px"></span>edge on reconstructed/accepted path (solid)</span>
+  <span data-role="pred"><span class="ln" style="border-top-color:var(--edge-tree);border-top-style:dashed"></span>predecessor pointer, DP (dashed)</span>
+  <span data-role="banned"><span class="ln" style="border-top-color:var(--edge-banned);border-top-style:dotted;border-top-width:2px"></span>backtracked edge, just rejected (dotted)</span>
 </div>
 
 <details class="explainer" id="glossaryWrap" open>
@@ -1677,6 +1689,7 @@ const ui = {
   reset:    document.getElementById("reset"),
   speed:    document.getElementById("speed"),
   speedLbl: document.getElementById("speedLbl"),
+  scrub:    document.getElementById("scrub"),
   progress: document.getElementById("progress"),
 
   paneA:    document.getElementById("paneA"),
@@ -1782,50 +1795,104 @@ function loadAndRun() {
   state.paneB.events = evB;
   state.paneB.algo = algoB;
 
+  ui.paneA.classList.remove("done", "rejected");
+  ui.paneB.classList.remove("done", "rejected");
   ui.statusA.textContent = specA.title + " — " + specA.hint;
   ui.statusB.textContent = specB.title + " — " + specB.hint;
-  ui.eventInfoA.innerHTML =
-    "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
-  ui.eventInfoB.innerHTML =
-    "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
+  renderNarration(ui.eventInfoA, state.paneA);
+  renderNarration(ui.eventInfoB, state.paneB);
   ui.A_paths.innerHTML = "";
   ui.B_paths.innerHTML = "";
 
   updateHeader(algoA, "A");
   updateHeader(algoB, "B");
+  updateLegend();
   updateSlots();
   draw(state.paneA, ui.canvasA);
   draw(state.paneB, ui.canvasB);
   setProgress();
 }
 
+// Show the last few step messages, the current one emphasised, so a viewer who
+// looks away keeps the thread. Reconstructs from events, so it survives seeking.
+function renderNarration(infoEl, s) {
+  const K = 4, end = s.iEvt, start = Math.max(0, end - K);
+  if (end === 0) { infoEl.innerHTML = '<div class="line cur">Step 0 — loaded. Press Play or Step.</div>'; return; }
+  let html = "";
+  for (let i = start; i < end; i++)
+    html += '<div class="line' + (i === end - 1 ? ' cur' : '') + '">' + (s.events[i].message || "") + '</div>';
+  infoEl.innerHTML = html;
+  infoEl.scrollTop = infoEl.scrollHeight;
+}
+
 function setProgress() {
   const total = Math.max(state.paneA.events.length, state.paneB.events.length);
   const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
-  ui.progress.textContent = "step " + cur + " / " + total;
+  const done = state.paneA.iEvt >= state.paneA.events.length && state.paneB.iEvt >= state.paneB.events.length;
+  ui.progress.textContent = (done ? "✓ done · " : "") + "step " + cur + " / " + total;
+  ui.progress.classList.toggle("done", done);
+  ui.scrub.max = total; ui.scrub.value = cur;
 }
 
-function stepPane(s, infoEl, canvas, pathsEl) {
+// Which legend roles actually occur in the loaded run — used to hide inactive keys.
+function rolesPresent(events, g, algo) {
+  // Roles that are present in essentially every run: the path endpoints, the
+  // current-vertex highlight, and visited/explored marking.
+  const r = new Set(["start", "end", "current", "visited"]);
+  for (const ev of events) {
+    if (ev.type === "dp-relax" || ev.type === "extend-try") r.add("considered");
+    if (ev.type === "ham-found" || ev.type === "extend-success" || ev.type === "reconstruct-step") r.add("accepted");
+    if (ev.type === "cycle-detected" ||
+        (ev.type && ev.type.indexOf("precheck-") === 0 && ev.passed === false))
+      r.add("impossible");
+  }
+  // Predecessor-pointer scaffolding is a DP-only visual; backtracked-edge is a
+  // backtracking-only visual.
+  if (algo === "dag") r.add("pred");
+  if (algo === "bt-naive" || algo === "bt-full") r.add("banned");
+  return r;
+}
+function updateLegend() {
+  const roles = new Set();
+  [state.paneA, state.paneB].forEach(s => {
+    if (s.g) rolesPresent(s.events, s.g, s.algo).forEach(x => roles.add(x));
+  });
+  document.querySelectorAll(".legend span[data-role]").forEach(el => {
+    el.style.display = roles.has(el.dataset.role) ? "" : "none";
+  });
+}
+
+// Terminal events that report "no Hamiltonian path" (tint the pane red) vs.
+// those that report a found path (tint the pane green).
+function isRejectTerminal(ev) {
+  if (ev.type === "no-ham" || ev.type === "cycle-detected" ||
+      ev.type === "reject-prechecks" || ev.type === "abort-states") return true;
+  if (ev.type && ev.type.indexOf("precheck-") === 0 && ev.passed === false) return true;
+  return false;
+}
+function isSuccessTerminal(ev) {
+  return ev.type === "ham-found" || ev.type === "extend-success";
+}
+
+function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
   if (s.iEvt >= s.events.length) return false;
   const ev = s.events[s.iEvt];
   applyEvent(s, ev);
   s.iEvt++;
-  infoEl.innerHTML = ev.message || "";
+  renderNarration(infoEl, s);
   draw(s, canvas);
-  if (ev.type === "ham-found" || ev.type === "no-ham" || ev.type === "extend-success" ||
-      ev.type === "cycle-detected" || ev.type === "reject-prechecks" || ev.type === "abort-states") {
-    renderResult(s, pathsEl);
-  }
+  if (isSuccessTerminal(ev)) { renderResult(s, pathsEl); paneEl.classList.add("done"); }
+  else if (isRejectTerminal(ev)) { renderResult(s, pathsEl); paneEl.classList.add("rejected"); }
   return true;
 }
 
 function stepForward() {
   let any = false;
   if (state.paneA.iEvt < state.paneA.events.length) {
-    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.A_paths) || any;
+    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA) || any;
   }
   if (state.paneB.iEvt < state.paneB.events.length) {
-    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.B_paths) || any;
+    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB) || any;
   }
   updateSlots();
   setProgress();
@@ -1833,15 +1900,16 @@ function stepForward() {
   return any;
 }
 
-function stepBackward() {
-  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
-  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths);
-  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths);
+function stepBackward() { seekTo(Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1)); }
+
+function seekTo(target) {
+  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA);
+  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB);
   updateSlots();
   setProgress();
 }
 
-function rebuildToStep(s, target, infoEl, canvas, pathsEl) {
+function rebuildToStep(s, target, infoEl, canvas, pathsEl, paneEl) {
   const g = s.g, evs = s.events, algo = s.algo;
   const fresh = paneState();
   fresh.g = g; fresh.events = evs; fresh.algo = algo;
@@ -1862,11 +1930,15 @@ function rebuildToStep(s, target, infoEl, canvas, pathsEl) {
   s.statsBacktracks = fresh.statsBacktracks;
   s.statsLongest = fresh.statsLongest; s.statsRelaxed = fresh.statsRelaxed;
   s.phaseLabel = fresh.phaseLabel; s.finished = fresh.finished;
-  infoEl.innerHTML = limit === 0
-    ? "At step 0 — graph loaded, no events applied yet."
-    : (evs[limit - 1].message || "");
+  renderNarration(infoEl, s);
+  // Re-derive the pane tint from the last applied event, so seeking backward
+  // out of a terminal step clears the green/red wash.
+  const lastEv = limit > 0 ? evs[limit - 1] : null;
+  paneEl.classList.toggle("done", !!(lastEv && isSuccessTerminal(lastEv)));
+  paneEl.classList.toggle("rejected", !!(lastEv && isRejectTerminal(lastEv)));
   draw(s, canvas);
-  pathsEl.innerHTML = "";
+  if (lastEv && (isSuccessTerminal(lastEv) || isRejectTerminal(lastEv))) renderResult(s, pathsEl);
+  else pathsEl.innerHTML = "";
 }
 
 function renderResult(s, pathsEl) {
@@ -1934,9 +2006,19 @@ ui.reset.addEventListener("click", reset);
 ui.speed.addEventListener("input", () => {
   ui.speedLbl.textContent = ui.speed.value + " ms/step";
 });
+ui.scrub.addEventListener("input", () => { pause(); seekTo(parseInt(ui.scrub.value, 10)); });
 window.addEventListener("resize", () => {
   draw(state.paneA, ui.canvasA);
   draw(state.paneB, ui.canvasB);
+});
+
+// Keyboard: Space = play/pause, ←/→ = step. Ignore when focused in a control.
+window.addEventListener("keydown", (e) => {
+  const t = (e.target.tagName || "").toUpperCase();
+  if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); state.playing ? pause() : play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); pause(); stepForward(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); pause(); stepBackward(); }
 });
 
 // ---- Initial load ----

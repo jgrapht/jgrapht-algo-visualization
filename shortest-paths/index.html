@@ -126,6 +126,12 @@
     font-size: 11px;
   }
   .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 4px; border: 1px solid #2a3142; }
+  /* Node-role swatches carry a shape as well as a colour so they stay
+     distinguishable without colour (round = node). */
+  .legend .nd { display: inline-block; width: 13px; height: 13px; border-radius: 50%; vertical-align: middle; margin-right: 4px; border: 1px solid #2a3142; }
+  /* Edge-role swatches are lines whose dash pattern + width distinguish the
+     role, mirroring the canvas strokes — readable in greyscale too. */
+  .legend .ln { display: inline-block; width: 20px; height: 0; vertical-align: middle; margin-right: 4px; border-top-style: solid; border-top-width: 3px; }
   /* Long-form explainers are wrapped in <details> elements so they don't
      consume vertical space by default at 100% zoom. Click the summary
      line to expand. */
@@ -157,10 +163,15 @@
   .glossary .card .term { color: var(--accent); font-weight: 600; font-size: 12px; }
   .glossary .card .def { color: #c0c6d6; font-size: 11px; line-height: 1.35; margin-top: 3px; }
   .pane .event-info {
-    padding: 6px 12px; color: #c0c6d6; border-top: 1px solid #232838;
-    background: #131822; min-height: 32px; font-size: 11px; line-height: 1.4;
+    padding: 7px 12px; color: #c0c6d6; border-top: 1px solid #232838;
+    background: #131822; min-height: 56px; max-height: 96px; overflow-y: auto;
+    font-size: 11px; line-height: 1.4;
   }
   .pane .event-info b { color: #cfe1ff; }
+  .pane .event-info .line { font-size: 11.5px; line-height: 1.45; opacity: 0.42; margin: 1px 0; }
+  .pane .event-info .line.cur { font-size: 13px; line-height: 1.5; opacity: 1; color: #e6e8ef; }
+  .controls #progress.done { color: var(--accent2); font-weight: 600; }
+  .controls input[type=range].scrub { width: 160px; accent-color: var(--accent); }
   /* Narrow viewport: stack the two panes vertically. The controls bar
      already wraps via flex-wrap. A future task is the vertical transport
      for true mobile use. */
@@ -229,8 +240,13 @@
   <label for="speed">Speed</label>
   <input id="speed" type="range" min="60" max="1200" value="450" step="20">
   <span id="speedLbl" class="sub">450 ms/step</span>
+  <label for="scrub">Scrub</label>
+  <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" title="Drag to scrub through steps">
   <span class="spacer"></span>
   <span id="progress" class="sub">step 0 / 0</span>
+</div>
+<div class="sr-hint" style="padding:2px 14px;font-size:11px;color:var(--muted);background:var(--panel);border-bottom:1px solid #232838">
+  Keys: <b>Space</b> play/pause · <b>←</b>/<b>→</b> step · drag <b>Scrub</b> to jump.
 </div>
 
 <div class="panes">
@@ -274,21 +290,25 @@
     </div>
   </div>
 
+  <!-- Each entry carries a data-role so updateLegend() can hide keys that the
+       currently-loaded algorithms/example never produce. Every colour is
+       paired with a shape (round node) or a line dash/width pattern, so the
+       entries stay distinguishable without colour (colour-blind safe). -->
   <div class="legend">
-    <span><span class="sw" style="background:var(--node-source)"></span>source</span>
-    <span><span class="sw" style="background:var(--node-target)"></span>target</span>
-    <span><span class="sw" style="background:var(--node-active)"></span>spur node / current expansion</span>
-    <span><span class="sw" style="background:var(--node-explored)"></span>explored / backward-marked</span>
-    <span><span class="sw" style="border:2px dashed #6cb3ff;background:transparent;border-radius:50%"></span>forward-marked halo (forward pruning)</span>
-    <span><span class="sw" style="background:#1c2230;border:2px solid var(--node-impossible);border-radius:50%;position:relative"><span style="position:absolute;inset:0;display:block;background:linear-gradient(135deg,transparent 45%,var(--node-impossible) 45% 55%,transparent 55%),linear-gradient(45deg,transparent 45%,var(--node-impossible) 45% 55%,transparent 55%)"></span></span>impossible-spur skip (red strike)</span>
-    <span><span class="sw" style="background:var(--edge-banned);height:4px;border-radius:2px"></span>Yen-banned edge</span>
-    <span><span class="sw" style="background:var(--edge-dropped);height:4px;border-radius:2px;border:1px dashed #8c4848;border-left:none;border-right:none"></span>forward-pruning dropped edge (dashed)</span>
-    <span><span class="sw" style="background:var(--edge-kept);height:4px;border-radius:2px"></span>forward-pruning kept edge (decoration map)</span>
-    <span><span class="sw" style="background:var(--edge-considered);height:4px;border-radius:2px"></span>currently considered edge</span>
-    <span><span class="sw" style="background:var(--edge-active);height:4px;border-radius:2px"></span>active spur path / reconstructed path</span>
-    <span><span class="sw" style="background:var(--edge-accepted);height:4px;border-radius:2px"></span>accepted path (final answer)</span>
-    <span><span class="sw" style="background:var(--edge-tree);height:4px;border-radius:2px"></span>Eppstein tree edge T* (δ = 0)</span>
-    <span><span class="sw" style="background:transparent;border:1px solid var(--edge-sidetrack);color:var(--edge-sidetrack);width:auto;padding:0 4px;font-size:9px;font-weight:600">δ</span>Eppstein sidetrack label</span>
+    <span data-role="source"><span class="nd" style="background:var(--node-source)"></span>source (round, blue)</span>
+    <span data-role="target"><span class="nd" style="background:var(--node-target)"></span>target (round, purple)</span>
+    <span data-role="spur"><span class="nd" style="background:var(--node-active);border:2px solid #fff1bf"></span>spur node / current expansion (gold ring)</span>
+    <span data-role="explored"><span class="nd" style="background:var(--node-explored)"></span>explored / backward-marked (green)</span>
+    <span data-role="forward"><span class="nd" style="background:transparent;border:2px dashed #6cb3ff"></span>forward-marked halo (dashed ring)</span>
+    <span data-role="impossible"><span class="nd" style="background:#1c2230;border:2px solid var(--node-impossible);position:relative"><span style="position:absolute;inset:0;display:block;background:linear-gradient(135deg,transparent 45%,var(--node-impossible) 45% 55%,transparent 55%),linear-gradient(45deg,transparent 45%,var(--node-impossible) 45% 55%,transparent 55%)"></span></span>impossible-spur skip (red strike-out)</span>
+    <span data-role="banned"><span class="ln" style="border-top-color:var(--edge-banned);border-top-width:2px"></span>Yen-banned edge (thin solid red)</span>
+    <span data-role="dropped"><span class="ln" style="border-top-color:var(--edge-dropped);border-top-style:dashed;border-top-width:2px"></span>forward-pruning dropped edge (dashed)</span>
+    <span data-role="kept"><span class="ln" style="border-top-color:var(--edge-kept);border-top-width:2px"></span>forward-pruning kept edge (decoration map)</span>
+    <span data-role="considered"><span class="ln" style="border-top-color:var(--edge-considered);border-top-width:4px"></span>currently considered edge (thick)</span>
+    <span data-role="active"><span class="ln" style="border-top-color:var(--edge-active);border-top-style:dashed;border-top-width:3px"></span>active path (animated dashes)</span>
+    <span data-role="accepted"><span class="ln" style="border-top-color:var(--edge-accepted);border-top-width:4px"></span>accepted path — final answer (thick gold)</span>
+    <span data-role="tree"><span class="ln" style="border-top-color:var(--edge-tree);border-top-style:dotted;border-top-width:3px"></span>Eppstein tree edge T* (dotted, δ = 0)</span>
+    <span data-role="sidetrack"><span class="sw" style="background:transparent;border:1px solid var(--edge-sidetrack);color:var(--edge-sidetrack);width:auto;padding:0 4px;font-size:9px;font-weight:600">δ</span>Eppstein sidetrack label</span>
   </div>
 
   <details class="explainer" id="glossaryWrap">
@@ -1762,6 +1782,10 @@ class PaneState {
     this.flashEdges = null;
     this.flashColor = null;
     this.flashUntil = 0;
+    // Rolling narration history (HTML strings, one per rendered event). The
+    // event-info pane shows the last few with the most recent emphasised, so
+    // a viewer who looks away keeps the thread. Cleared on reset/seek.
+    this.narrationLog = [];
     this.updateSlots();
     // Bug-fix: clear stale status badge/log so reset visibly resets the
     // pane instead of keeping the last "expand X" tag visible.
@@ -1939,7 +1963,13 @@ class PaneState {
       const tbl = EVENT_INFO[this.mode] || EVENT_INFO.yen;
       const fn = tbl[ev.kind];
       const html = fn ? fn(ev, this) : "";
-      if (html) this.eventInfoEl.innerHTML = html;
+      // Only events with a real explanation join the narration history; the
+      // many step-level "" entries (stat/end/etc.) are skipped so the rolling
+      // window stays meaningful.
+      if (html) {
+        this.narrationLog.push(html);
+        renderNarration(this.eventInfoEl, this.narrationLog);
+      }
     }
   }
   nodeLabel(i) { return this.g.nodes[i].id; }
@@ -1963,6 +1993,7 @@ class PaneState {
       let color = getCss("--edge");
       let width = 1.4;
       let dashed = false;
+      let animated = false;   // moving-dash flow along the current active path
       // 1. Sandwich-mode classification — muted greens/reds for scaffolding
       //    so the gold accepted paths can stand out on top.
       if (isForwardPruning) {
@@ -1975,35 +2006,38 @@ class PaneState {
       if (this.treeEdges.has(eIdx)) { color = getCss("--edge-tree"); width = 2.2; }
       // 2. Yen-rule banned edges — solid red, thin.
       if (this.bannedEdges.has(eIdx)) { color = getCss("--edge-banned"); width = 1.6; }
-      // 3. Active spur path / single-mode reconstructed path — blue, thick.
+      // 3. Active spur path / single-mode reconstructed path — blue, thick,
+      //    with a moving dash so the *current* highlighted path reads as
+      //    "live" (the persistent accepted answer below stays solid gold).
       if (this.activePath && pathContainsEdge(this.activePath, e.u, e.v)) {
         color = getCss("--edge-active"); width = 3;
-        dashed = false;
+        dashed = true; animated = true;
       }
       // 4. Accepted path edges — gold, persistent across every accept.
       //    Drawn after the spur/active highlight so the user can see the
-      //    final answer once the spur fades.
+      //    final answer once the spur fades. Solid (not animated).
       const edgeKey = (e.u << 16) | e.v;
       if (this.acceptedPathEdges.has(edgeKey)) {
         color = getCss("--edge-accepted"); width = 3.4;
-        dashed = false;
+        dashed = false; animated = false;
       }
       // 5. Currently considered edge (sandwich's edgeConsider event) —
       //    transient yellow, brightest.
       if (isForwardPruning && this.activeEdge === eIdx) {
         color = getCss("--edge-considered"); width = 4;
-        dashed = false;
+        dashed = false; animated = false;
       }
       // 6. Accept flash — brief pulse over the whole path.
       const now = performance.now();
       if (this.flashEdges && now < this.flashUntil) {
-        if (this.flashEdges.has(edgeKey)) { color = this.flashColor; width = 4.5; dashed = false; }
+        if (this.flashEdges.has(edgeKey)) { color = this.flashColor; width = 4.5; dashed = false; animated = false; }
       } else if (this.flashEdges && now >= this.flashUntil) {
         this.flashEdges = null;
       }
-      if (dashed) ctx.setLineDash([6, 4]);
-      drawArrow(ctx, x1, y1, x2, y2, 14, color, width);
-      if (dashed) ctx.setLineDash([]);
+      // Dropped (sandwich) edges keep the static [6,4] dash; the active path
+      // uses the moving [7,5] flow dash.
+      const dashPattern = animated ? [7, 5] : (dashed ? [6, 4] : null);
+      drawArrow(ctx, x1, y1, x2, y2, 14, color, width, dashPattern, animated);
       // Weight labels: not useful in sandwich mode (AllDirectedPaths is
       // unweighted — every edge cost is 1). Also skipped when the whole
       // graph is unit-weighted, since labels of "1" everywhere are noise.
@@ -2011,14 +2045,15 @@ class PaneState {
       const hasSidetrack = this.sidetrackLabels.has(eIdx);
       if (!(isForwardPruning || allUnit) || hasSidetrack) {
         const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-        ctx.font = "11px ui-sans-serif, sans-serif";
-        ctx.fillStyle = this.bannedEdges.has(eIdx) ? "#f0a4a4" : "#9aa3b8";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         const dx = x2 - x1, dy = y2 - y1;
         const L = Math.hypot(dx, dy) || 1;
-        const ox = -dy / L * 8, oy = dx / L * 8;
-        // For edges with both a weight and a sidetrack, show "w | δ=N".
+        // Push the label a little further off the edge so it doesn't sit on
+        // the line, and size it up a touch for legibility.
+        const ox = -dy / L * 10, oy = dx / L * 10;
+        // For edges with both a weight and a sidetrack, show "w · δ=N".
         let label = String(e.w);
+        let textColor = this.bannedEdges.has(eIdx) ? "#f0a4a4" : "#9aa3b8";
         if (hasSidetrack) {
           const delta = this.sidetrackLabels.get(eIdx);
           if (allUnit) {
@@ -2026,8 +2061,25 @@ class PaneState {
           } else {
             label = `${e.w} · δ=${delta}`;
           }
-          ctx.fillStyle = delta === 0 ? "#9aa3b8" : getCss("--edge-sidetrack");
+          textColor = delta === 0 ? "#9aa3b8" : getCss("--edge-sidetrack");
         }
+        ctx.font = "12px ui-sans-serif, sans-serif";
+        // Legible dark backing chip so the bumped-up label reads cleanly
+        // against edges and node fills.
+        const tw = ctx.measureText(label).width;
+        ctx.save();
+        ctx.fillStyle = "rgba(18,22,30,0.82)";
+        const bx = mx + ox - tw / 2 - 3, by = my + oy - 8, bw = tw + 6, bh = 15, br = 3;
+        ctx.beginPath();
+        ctx.moveTo(bx + br, by);
+        ctx.arcTo(bx + bw, by, bx + bw, by + bh, br);
+        ctx.arcTo(bx + bw, by + bh, bx, by + bh, br);
+        ctx.arcTo(bx, by + bh, bx, by, br);
+        ctx.arcTo(bx, by, bx + bw, by, br);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = textColor;
         ctx.fillText(label, mx + ox, my + oy);
       }
     }
@@ -2097,7 +2149,11 @@ function pathContainsEdge(path, u, v) {
   return false;
 }
 
-function drawArrow(ctx, x1, y1, x2, y2, nodeR, color, width) {
+// `dash` is an optional setLineDash pattern for the shaft; `animated` shifts
+// the dash offset by wall-clock time so the active path's dashes appear to
+// flow toward the target. The dash is reset after the shaft so the (always
+// solid) arrowhead is unaffected.
+function drawArrow(ctx, x1, y1, x2, y2, nodeR, color, width, dash, animated) {
   const dx = x2 - x1, dy = y2 - y1;
   const L = Math.hypot(dx, dy) || 1;
   const ux = dx / L, uy = dy / L;
@@ -2108,9 +2164,12 @@ function drawArrow(ctx, x1, y1, x2, y2, nodeR, color, width) {
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = width;
+  if (dash) ctx.setLineDash(dash);
+  if (animated) ctx.lineDashOffset = -(performance.now() / 45) % 1000;  // flow toward the target
   ctx.beginPath();
   ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
   ctx.stroke();
+  if (dash) { ctx.setLineDash([]); ctx.lineDashOffset = 0; }
   // Arrowhead.
   const ah = 7;
   const ang = Math.atan2(ey - sy, ex - sx);
@@ -2128,6 +2187,22 @@ function getCss(name) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Show the last few narration lines, the current one emphasised, so a viewer
+// who looks away keeps the thread. Driven by a per-pane rolling log so it
+// survives seeking (the log is rebuilt during reset + fast-forward).
+function renderNarration(infoEl, log) {
+  const K = 4, end = log.length, start = Math.max(0, end - K);
+  if (end === 0) {
+    infoEl.innerHTML = '<div class="line cur">Step 0 — loaded. Press Play or Step.</div>';
+    return;
+  }
+  let html = "";
+  for (let i = start; i < end; i++)
+    html += '<div class="line' + (i === end - 1 ? ' cur' : '') + '">' + (log[i] || "") + '</div>';
+  infoEl.innerHTML = html;
+  infoEl.scrollTop = infoEl.scrollHeight;
 }
 
 /* ============================================================
@@ -2153,6 +2228,7 @@ const ui = {
   reset: document.getElementById("reset"),
   speed: document.getElementById("speed"),
   speedLbl: document.getElementById("speedLbl"),
+  scrub: document.getElementById("scrub"),
   progress: document.getElementById("progress"),
   pathsA: document.getElementById("A_paths"),
   pathsB: document.getElementById("B_paths"),
@@ -2255,8 +2331,12 @@ function loadAndRun() {
     mode === "yen" ? "Press <b>Play</b> — Yen's algorithm will iterate: find a path, generate spur tasks off it, pick the cheapest candidate, repeat."
     : mode === "single" ? "Press <b>Play</b> — the algorithm will repeatedly <em>expand</em> the cheapest node in its open set until the target is settled."
     : "Press <b>Play</b> — pane B runs its forward BFS prelude first; once that finishes pane A's backward BFS starts and both proceed in lockstep.";
-  document.getElementById("eventInfoA").innerHTML = startMsg;
-  document.getElementById("eventInfoB").innerHTML = startMsg;
+  // Seed each pane's narration history with the start hint so the rolling
+  // window has something to show before the first step.
+  paneA.narrationLog = [startMsg];
+  paneB.narrationLog = [startMsg];
+  renderNarration(paneA.eventInfoEl, paneA.narrationLog);
+  renderNarration(paneB.eventInfoEl, paneB.narrationLog);
   // Show/hide K, budget, and per-pane algorithm pickers per mode.
   const showK = mode === "yen";
   const showBudget = mode === "forwardPruning";
@@ -2318,12 +2398,18 @@ function loadAndRun() {
   state.step = 0;
   ui.pathsA.innerHTML = "";
   ui.pathsB.innerHTML = "";
+  updateLegend();
   paneA.draw(); paneB.draw();
   updateProgress();
 }
 
 function updateProgress() {
-  ui.progress.textContent = `step ${state.step} / ${state.totalSteps}`;
+  const done = state.totalSteps > 0 && state.step >= state.totalSteps;
+  ui.progress.textContent = (done ? "✓ done · " : "") + `step ${state.step} / ${state.totalSteps}`;
+  ui.progress.classList.toggle("done", done);
+  // Drive the scrubber from playback position (and let it be dragged back).
+  ui.scrub.max = state.totalSteps;
+  ui.scrub.value = state.step;
 }
 
 /**
@@ -2392,18 +2478,31 @@ function applyOne() {
   return progressed;
 }
 
-// Step backward by one event. Implemented as a reset + fast-forward to
-// state.step - 1, which keeps the event-application code path single-
-// sourced. Trivially fast for the event counts these algorithms produce
-// (<1500 events on the largest example).
-function stepBack() {
-  if (state.step <= 0) return;
-  const targetStep = state.step - 1;
+// Seek to an absolute step. Implemented as a reset + fast-forward, which
+// keeps the event-application code path single-sourced. Trivially fast for
+// the event counts these algorithms produce (<1500 events on the largest
+// example). Backing both the scrubber and step-back through this keeps
+// seeking deterministic.
+function seekTo(target) {
+  const clamped = Math.max(0, Math.min(target | 0, state.totalSteps));
   paneA.reset(); paneB.reset();
   state.iA = 0; state.iB = 0; state.step = 0;
   ui.pathsA.innerHTML = "";
   ui.pathsB.innerHTML = "";
-  for (let i = 0; i < targetStep; i++) applyOne();
+  for (let i = 0; i < clamped; i++) applyOne();
+  // If we landed on step 0 no applyOne ran, so refresh the view explicitly
+  // (including the now-empty narration window).
+  if (clamped === 0) {
+    renderNarration(paneA.eventInfoEl, paneA.narrationLog);
+    renderNarration(paneB.eventInfoEl, paneB.narrationLog);
+    paneA.draw(); paneB.draw(); updateProgress();
+  }
+}
+
+// Step backward by one event.
+function stepBack() {
+  if (state.step <= 0) return;
+  seekTo(state.step - 1);
 }
 
 function play() {
@@ -2432,12 +2531,98 @@ ui.step.addEventListener("click", () => { pause(); applyOne(); });
 ui.stepBack.addEventListener("click", () => { pause(); stepBack(); });
 ui.reset.addEventListener("click", () => { pause(); loadAndRun(); });
 ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+ui.scrub.addEventListener("input", () => { pause(); seekTo(parseInt(ui.scrub.value, 10)); });
 ui.mode.addEventListener("change", () => { pause(); loadAndRun(); });
 ui.budget.addEventListener("change", () => { pause(); loadAndRun(); });
 ui.example.addEventListener("change", () => { pause(); loadAndRun(); });
 ui.k.addEventListener("change", () => { pause(); loadAndRun(); });
 ui.algoA.addEventListener("change", () => { pause(); loadAndRun(); });
 ui.algoB.addEventListener("change", () => { pause(); loadAndRun(); });
+
+// Keyboard: Space = play/pause, ←/→ = step. Ignore when focused in a control
+// (so arrow keys still adjust the sliders / selects).
+window.addEventListener("keydown", (e) => {
+  const t = (e.target.tagName || "").toUpperCase();
+  if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); state.playing ? pause() : play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); pause(); applyOne(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); pause(); stepBack(); }
+});
+
+/* ============================================================
+ * Progressive legend — show only the keys the loaded run uses
+ * ============================================================ */
+
+// Which legend roles actually occur in a loaded event stream (for one pane).
+// Used to hide inactive keys so the page's large legend stays readable.
+// Ambiguous roles default to shown (we never hide something that may apply).
+function rolesPresent(events, g) {
+  const r = new Set(["source", "target"]);   // every example has both
+  for (const ev of events) {
+    switch (ev.kind) {
+      case "initial":
+      case "spurExpand":
+      case "vertexBwd":
+        r.add("explored"); break;
+      case "spurStart":
+        r.add("spur");
+        if (ev.bannedEdges && ev.bannedEdges.size) r.add("banned");
+        break;
+      case "spurSkip":
+        if (ev.reason && ev.reason.startsWith("impossible")) r.add("impossible");
+        break;
+      case "spurDone":
+      case "walkPop":
+        r.add("active"); break;
+      case "accept":
+        r.add("accepted");
+        if ((ev.path && ev.path.length > 1)) r.add("active");
+        break;
+      case "vertexFwd":
+        r.add("forward"); break;
+      case "edgeConsider":
+        r.add("considered"); break;
+      case "edgeKeep":
+        r.add("kept"); break;
+      case "edgeDrop":
+        r.add("dropped"); break;
+      case "treeEdge":
+        r.add("tree"); break;
+      case "sidetrack":
+        if (ev.delta > 0) r.add("sidetrack"); else r.add("tree");
+        break;
+    }
+  }
+  // The reconstructed/active path highlight is shown in single mode too
+  // (the search reconstructs one path), so make sure it's present whenever a
+  // path was accepted.
+  return r;
+}
+
+function updateLegend() {
+  const roles = new Set();
+  [state.eventsA, state.eventsB].forEach(evs => {
+    if (evs && evs.length && state.g) rolesPresent(evs, state.g).forEach(x => roles.add(x));
+  });
+  document.querySelectorAll(".legend span[data-role]").forEach(el => {
+    el.style.display = roles.has(el.dataset.role) ? "" : "none";
+  });
+}
+
+// Animate the dashes along the current highlighted (blue) active path only.
+// Kept cheap: a pane redraws solely while it has a live activePath of length
+// ≥ 2; the persistent gold accepted answer is solid and needs no redraw, so
+// once a run is finished the loop idles. Flash pulses (≈600 ms) also drive a
+// redraw so the green pulse animates smoothly.
+function dashTick() {
+  const live = (p) =>
+    (p.activePath && p.activePath.length > 1) ||
+    (p.flashEdges && performance.now() < p.flashUntil);
+  if (live(paneA)) paneA.draw();
+  if (live(paneB)) paneB.draw();
+  requestAnimationFrame(dashTick);
+}
+requestAnimationFrame(dashTick);
 
 loadAndRun();
 
