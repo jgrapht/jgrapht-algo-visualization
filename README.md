@@ -25,6 +25,7 @@ relevant terminology.
 | [`/max-flow/`](max-flow/) | **Maximum flow / min cut** | Edmonds-Karp (BFS shortest augmenting paths), Dinic (level graph + blocking flow); residual graph and max-flow min-cut duality |
 | [`/matching/`](matching/) | **Bipartite matching** | Greedy (maximal, ½-approx), augmenting-path method (Kuhn), Hopcroft-Karp (batched shortest augmenting paths); maximal vs maximum |
 | [`/connectivity/`](connectivity/) | **Strongly connected components** | Kosaraju (two DFS passes + transpose), Tarjan (lowlink), Gabow (two-stack path-based); identical SCC partition, different bookkeeping |
+| [`/clustering/`](clustering/) | **Community detection** | Louvain local-moving (single level) vs. multilevel `LouvainClustering` (local-moving + aggregation); modularity optimisation, dual-pane ready for more community algorithms |
 
 Each topic page reproduces the algorithms exactly as they're implemented in
 [JGraphT][jgrapht].
@@ -81,6 +82,7 @@ Canonical URL: <https://algo-visualization.jgrapht.org/>.
 | `max-flow/index.html` | The maximum-flow / min-cut visualization (Edmonds-Karp and Dinic; residual graph, blocking flow, min-cut finale). |
 | `matching/index.html` | The bipartite-matching visualization (greedy, augmenting-path / Kuhn, Hopcroft-Karp; maximal vs maximum). |
 | `connectivity/index.html` | The strongly-connected-components visualization (Kosaraju, Tarjan, Gabow; same partition, different bookkeeping). |
+| `clustering/index.html` | The community-detection visualization (Louvain local-moving vs. multilevel; modularity optimisation). |
 | `favicon.ico`, `apple-touch-icon.png` | Site icons (referenced as `/favicon.ico` etc. from every page). |
 | `CNAME` | Custom-domain claim for `algo-visualization.jgrapht.org`. |
 | `.nojekyll` | Empty marker so GitHub Pages skips Jekyll. |

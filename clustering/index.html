@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Community detection — JGraphT algorithm visualizations</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/x-icon" href="../favicon.ico">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1c2230;
+    --ink: #e6e8ef;
+    --muted: #8a93a6;
+    --accent: #6cb3ff;
+    --accent2: #8ee08e;
+    --warn: #f3c04a;
+    --bad: #f06f6f;
+    --edge: #434a5e;
+    --edge-intra: #8ee08e;           /* edge inside a community */
+    --edge-inter: #353c4e;           /* edge crossing communities */
+    --node-fill: #2a3142;
+    --node-stroke: #6c7488;
+    --node-active: #f0884a;          /* vertex / community currently moving */
+  }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  header {
+    padding: 8px 14px; border-bottom: 1px solid #232838;
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 6; background: var(--bg);
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  header h1 a { color: var(--muted); text-decoration: none; }
+  header h1 a:hover { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 6px 14px; background: var(--panel); border-bottom: 1px solid #232838;
+    font-size: 12px; position: sticky; top: 33px; z-index: 5;
+  }
+  .controls label { color: var(--muted); margin-left: 6px; }
+  .controls select, .controls button, .controls input[type=range] {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid #2c3447; padding: 6px 10px; border-radius: 6px; font: inherit;
+  }
+  .controls button { cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button.primary { background: var(--accent); color: #0a0e16; border-color: var(--accent); font-weight: 600; }
+  .controls button.primary:hover { filter: brightness(1.08); }
+  .controls .spacer { flex: 1; }
+  .controls .transport {
+    display: inline-flex; gap: 0; align-items: stretch;
+    border: 1px solid #2c3447; border-radius: 8px; overflow: hidden; background: var(--panel-2);
+  }
+  .controls .transport button {
+    border: none; border-right: 1px solid #2c3447; border-radius: 0;
+    padding: 6px 12px; min-width: 36px; font-size: 14px; background: transparent; color: var(--ink);
+  }
+  .controls .transport button:last-child { border-right: none; }
+  .controls .transport button:disabled { color: #555a6a; cursor: default; }
+  .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
+  .panes { display: grid; gap: 10px; padding: 10px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid #232838; border-radius: 10px; display: flex; flex-direction: column; }
+  .pane h2 {
+    margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid #232838; display: flex; align-items: center; gap: 8px;
+  }
+  .pane h2 .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font-weight: 500; }
+  .pane .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-bottom: 1px solid #232838; }
+  .pane .stat {
+    padding: 5px 10px; border-right: 1px solid #232838;
+    display: flex; flex-direction: column; justify-content: space-between; min-height: 48px;
+  }
+  .pane .stat:last-child { border-right: none; }
+  .pane .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; min-height: 24px; }
+  .pane .stat .v { color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1; }
+  .pane canvas { width: 100%; height: min(44vh, 380px); min-height: 240px; display: block; background: #0c0f15; }
+  .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
+  .pane .event-info {
+    padding: 8px 12px; font-size: 12px; line-height: 1.55; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d; min-height: 38px;
+  }
+  .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .pane.done .event-info { background: #0f1f17; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
+    background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
+    font-size: 11px; color: var(--muted);
+  }
+  .legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .legend .ln { display: inline-block; width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; margin-right: 4px; vertical-align: middle; }
+  details.explainer { margin: 10px; background: var(--panel); border: 1px solid #232838; border-radius: 10px; }
+  details.explainer > summary { cursor: pointer; padding: 8px 14px; font-size: 12px; color: var(--ink); font-weight: 600; list-style: none; }
+  details.explainer > summary::-webkit-details-marker { display: none; }
+  details.explainer > .body { padding: 0 14px 12px; font-size: 12px; color: #c0c6d6; line-height: 1.55; }
+  details.explainer .glossary { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 6px; }
+  details.explainer .card { background: var(--panel-2); border: 1px solid #2c3447; border-radius: 8px; padding: 8px 10px; font-size: 11px; }
+  details.explainer .card .term { color: var(--accent); font-weight: 600; margin-bottom: 3px; }
+  details.explainer .card .def { color: #c0c6d6; }
+  details.explainer code { background: #11151d; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .results { padding: 0 10px 10px; }
+  .results .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .results h3 { margin: 8px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .results ol { margin: 0 0 0 16px; padding: 0; font-size: 12px; color: #c0c6d6; }
+  .results ol li { margin: 3px 0; }
+  .results .seq { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .results .total { color: var(--accent2); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="../index.html">JGraphT algorithm visualizations</a> &nbsp;›&nbsp; Community detection</h1>
+  <span class="sub">Louvain modularity optimisation — local moving vs. the full multilevel algorithm</span>
+</header>
+
+<div class="controls">
+  <label for="algoA">A</label>
+  <select id="algoA">
+    <option value="local" selected>Louvain — local moving (1 level)</option>
+    <option value="multi">Louvain — multilevel (+ aggregation)</option>
+  </select>
+  <label for="algoB">B</label>
+  <select id="algoB">
+    <option value="local">Louvain — local moving (1 level)</option>
+    <option value="multi" selected>Louvain — multilevel (+ aggregation)</option>
+  </select>
+  <label for="example">Example</label>
+  <select id="example"></select>
+  <span class="transport">
+    <button id="run" class="primary" title="Load — build the graph and the event stream">⏏</button>
+    <button id="stepBack" title="Previous step">⏮</button>
+    <button id="play" title="Play">▶</button>
+    <button id="pause" disabled title="Pause">❚❚</button>
+    <button id="step" title="Next step">⏭</button>
+    <button id="reset" title="Stop and reset to step 0">⏹</button>
+  </span>
+  <label for="speed">Speed</label>
+  <input id="speed" type="range" min="60" max="1200" value="460" step="20">
+  <span id="speedLbl" class="sub">460 ms/step</span>
+  <span class="spacer"></span>
+  <span id="progress" class="sub">step 0 / 0</span>
+</div>
+
+<div class="panes" id="panes">
+  <div class="pane" id="paneA">
+    <h2 id="A_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k" id="A_lbl0">phase</div><div class="v" id="A_slot0">—</div></div>
+      <div class="stat"><div class="k" id="A_lbl1">communities</div><div class="v" id="A_slot1">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl2">modularity Q</div><div class="v" id="A_slot2">0.000</div></div>
+      <div class="stat"><div class="k" id="A_lbl3">pass</div><div class="v" id="A_slot3">0</div></div>
+    </div>
+    <canvas id="canvasA"></canvas>
+    <div class="status" id="statusA">Ready.</div>
+    <div class="event-info" id="eventInfoA">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+
+  <div class="pane" id="paneB">
+    <h2 id="B_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k" id="B_lbl0">phase</div><div class="v" id="B_slot0">—</div></div>
+      <div class="stat"><div class="k" id="B_lbl1">communities</div><div class="v" id="B_slot1">0</div></div>
+      <div class="stat"><div class="k" id="B_lbl2">modularity Q</div><div class="v" id="B_slot2">0.000</div></div>
+      <div class="stat"><div class="k" id="B_lbl3">level</div><div class="v" id="B_slot3">0</div></div>
+    </div>
+    <canvas id="canvasB"></canvas>
+    <div class="status" id="statusB">Ready.</div>
+    <div class="event-info" id="eventInfoB">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="row">
+    <div><h3>Pane A — communities</h3><ol id="A_paths"></ol></div>
+    <div><h3>Pane B — communities</h3><ol id="B_paths"></ol></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="ln" style="border-top-color:var(--edge-intra)"></span>edge inside a community</span>
+  <span><span class="ln" style="border-top-color:var(--edge-inter)"></span>edge between communities</span>
+  <span><span class="sw" style="background:var(--node-active)"></span>vertex / community moving this step</span>
+  <span style="color:var(--muted)">node fill = community · stats show modularity Q</span>
+</div>
+
+<details class="explainer" id="glossaryWrap" open>
+  <summary>Glossary — modularity, local moving, aggregation, resolution limit</summary>
+  <div class="body glossary">
+    <div class="card"><div class="term">Community / cluster</div><div class="def">A group of vertices the algorithm keeps together — denser links inside than across. Shown by colour; each connected blob of one colour is a community.</div></div>
+    <div class="card"><div class="term">Modularity Q</div><div class="def">How many edges fall inside communities versus what you'd expect by chance: <code>Q = Σ_c [ 2·e<sub>in</sub>(c)/2m − (Σ<sub>tot</sub>(c)/2m)² ]</code>. Higher is better; maximising it is NP-hard. The stat panel tracks Q as it climbs.</div></div>
+    <div class="card"><div class="term">Local moving</div><div class="def">The greedy core: repeatedly take one vertex out of its community and put it into the neighbouring community that gives the best modularity gain, until a full pass moves nobody.</div></div>
+    <div class="card"><div class="term">Modularity gain</div><div class="def">The change in <code>Q</code> from moving vertex <code>i</code> into community <code>C</code>: <code>w(i→C) − Σ<sub>tot</sub>(C)·k<sub>i</sub>/2m</code>. A vertex moves only when the best gain beats staying put.</div></div>
+    <div class="card"><div class="term">Aggregation</div><div class="def">After local moving settles, contract every community into a single <em>super-vertex</em> (intra-community edges become self-loops, so degrees are conserved) and run local moving again on the much smaller graph. Each round is one <em>level</em>.</div></div>
+    <div class="card"><div class="term">Local moving vs multilevel</div><div class="def">Local moving alone (one level) finds tight clusters but can stop at a fine-grained partition. Multilevel — JGraphT's <code>LouvainClustering</code> — keeps aggregating, which can merge those clusters into coarser communities of <em>higher</em> modularity and scales to millions of edges.</div></div>
+    <div class="card"><div class="term">Σ<sub>tot</sub></div><div class="def">Total weighted degree of all vertices currently in a community — the term that penalises large communities in the modularity gain.</div></div>
+    <div class="card"><div class="term">2m</div><div class="def">Twice the number of edges (the sum of all degrees). JGraphT's <code>LouvainClustering</code> uses the same <code>2m</code> / self-loop conventions as <code>UndirectedModularityMeasurer</code>, so <code>getModularity()</code> agrees exactly.</div></div>
+    <div class="card"><div class="term">Resolution limit</div><div class="def">Modularity can fail to separate very small communities, sometimes merging them — a known limitation Louvain inherits, and a motivation for newer methods (Leiden, etc.).</div></div>
+  </div>
+</details>
+
+<details class="explainer" id="narrativeWrap">
+  <summary>What you're watching — Louvain community detection</summary>
+  <div class="body">
+    <h3 style="margin-top:0">Pick either mode in each pane</h3>
+    <p>
+      Two views of JGraphT's <code>org.jgrapht.alg.clustering.LouvainClustering</code>
+      run on the same graph:
+    </p>
+    <ul>
+      <li><b>Local moving (1 level)</b> — only the greedy local-moving phase on the
+        original graph. Fast, and often enough, but it stops at the first stable
+        partition.</li>
+      <li><b>Multilevel (+ aggregation)</b> — the full algorithm: after local moving
+        settles, communities are contracted into super-vertices and local moving runs
+        again, level after level, until nothing improves.</li>
+    </ul>
+    <p>
+      <b>The punchline:</b> on well-separated graphs both reach the same partition (the
+      <em>planted</em> example), so aggregation is "free" insurance. But on a
+      <em>hierarchical</em> graph, local moving alone gets stuck at the fine clusters
+      while the multilevel run aggregates them into coarser communities of strictly
+      higher modularity. Compare the <em>communities</em> and <em>Q</em> stats.
+    </p>
+    <p>
+      This page is built for comparison: more community-detection algorithms can be
+      added as extra options in the A / B selectors. The two panes run independently;
+      total progress is the slower pane's step count.
+    </p>
+  </div>
+</details>
+
+<script>
+"use strict";
+
+// =======================================================================
+// Examples — undirected, unweighted graphs with community structure.
+// =======================================================================
+//
+//   { title, hint, nodes: [{id, x, y, label}], edges: [[u, v]] }
+
+// Lay groups of vertices out as rings arranged around a circle.
+function layoutGroups(groups) {
+  const nodes = [];
+  const G = groups.length;
+  groups.forEach((members, gi) => {
+    const ang = -Math.PI / 2 + gi * 2 * Math.PI / G;
+    const cx = 0.5 + (G === 1 ? 0 : 0.30) * Math.cos(ang);
+    const cy = 0.5 + (G === 1 ? 0 : 0.32) * Math.sin(ang);
+    const k = members.length;
+    members.forEach((id, j) => {
+      const a = -Math.PI / 2 + j * 2 * Math.PI / k;
+      const r = k <= 1 ? 0 : 0.12;
+      nodes[id] = { id, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), label: String(id) };
+    });
+  });
+  return nodes.filter(Boolean).sort((a, b) => a.id - b.id);
+}
+function clique(ids) {
+  const e = [];
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) e.push([ids[i], ids[j]]);
+  return e;
+}
+
+const EXAMPLES = {
+  bridged: () => ({
+    title: "Two cliques + a bridge (2 communities)",
+    nodes: layoutGroups([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]),
+    edges: [...clique([0, 1, 2, 3, 4]), ...clique([5, 6, 7, 8, 9]), [4, 5]],
+    hint: "Two dense groups joined by one edge — both modes recover the obvious 2 communities.",
+  }),
+
+  planted: () => ({
+    title: "Three planted communities",
+    nodes: layoutGroups([[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14]]),
+    edges: [
+      [0, 1], [0, 2], [0, 3], [1, 2], [1, 4], [2, 3], [3, 4],
+      [5, 6], [5, 7], [5, 9], [6, 7], [6, 8], [7, 8], [8, 9],
+      [10, 11], [10, 12], [10, 14], [11, 12], [11, 13], [12, 13], [13, 14],
+      [4, 5], [9, 10], [14, 0],
+    ],
+    hint: "Three sparse groups with single bridges. Local moving already finds them; multilevel agrees.",
+  }),
+
+  hierarchical: () => ({
+    title: "Hierarchical (multilevel merges further)",
+    nodes: layoutGroups([[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]),
+    edges: [
+      ...clique([0, 1, 2, 3]), ...clique([4, 5, 6, 7]),
+      ...clique([8, 9, 10, 11]), ...clique([12, 13, 14, 15]),
+      [0, 4], [1, 5], [2, 6], [3, 7], [0, 5],     // A–B coupling
+      [8, 12], [9, 13], [10, 14], [11, 15], [8, 13], // C–D coupling
+      [2, 10], [7, 15],                            // sparse cross links
+    ],
+    hint: "Four cliques in two tightly-coupled pairs. Local moving stops at 4; multilevel aggregates to 2 (higher Q).",
+  }),
+};
+
+const EXAMPLE_ORDER = ["bridged", "planted", "hierarchical"];
+const EXAMPLE_LABELS = {
+  bridged:      "Two cliques + bridge (2 communities)",
+  planted:      "Three planted communities",
+  hierarchical: "Hierarchical (multilevel merges further)",
+};
+function examplesForPair() { return EXAMPLE_ORDER; }
+
+const ALGO_INFO = {
+  "local": {
+    h2: "Louvain — local moving",
+    badge: "single level · greedy modularity",
+    slotLabels: ["phase", "communities", "modularity Q", "pass"],
+  },
+  "multi": {
+    h2: "LouvainClustering",
+    badge: "multilevel · local moving + aggregation",
+    slotLabels: ["phase", "communities", "modularity Q", "level"],
+  },
+};
+
+// =======================================================================
+// Louvain — JS port of org.jgrapht.alg.clustering.LouvainClustering
+// =======================================================================
+//
+// Tracks each ORIGINAL vertex's community throughout so the animation can
+// colour the original layout at every level. Community labels use the
+// minimum original-vertex id in the community, which keeps colours stable
+// across the aggregation step.
+
+function runLouvain(g, multilevel) {
+  const N = g.nodes.length;
+  const EDGES = g.edges;
+  const m2 = EDGES.length * 2;                  // 2m (unweighted: sum of degrees)
+  const EPS = 1e-12;
+  const events = [];
+
+  // modularity over the ORIGINAL graph for a vertex -> community labelling
+  const baseDeg = new Array(N).fill(0);
+  for (const [u, v] of EDGES) { baseDeg[u]++; baseDeg[v]++; }
+  function modularity(oc) {
+    const tot = {}, ein = {};
+    for (let i = 0; i < N; i++) tot[oc[i]] = (tot[oc[i]] || 0) + baseDeg[i];
+    for (const [u, v] of EDGES) if (oc[u] === oc[v]) ein[oc[u]] = (ein[oc[u]] || 0) + 1;
+    let q = 0;
+    for (const c in tot) q += (2 * (ein[c] || 0)) / m2 - Math.pow(tot[c] / m2, 2);
+    return q;
+  }
+
+  // current-level graph
+  let nodeMembers = Array.from({ length: N }, (_, i) => [i]);
+  let adj = Array.from({ length: N }, () => new Map());
+  for (const [u, v] of EDGES) {
+    adj[u].set(v, (adj[u].get(v) || 0) + 1);
+    adj[v].set(u, (adj[v].get(u) || 0) + 1);
+  }
+  let curN = N;
+
+  function degOf() {
+    const d = new Array(curN).fill(0);
+    for (let i = 0; i < curN; i++) for (const [j, w] of adj[i]) d[i] += (i === j ? 2 * w : w);
+    return d;
+  }
+  // Map current partition -> original-vertex labels, using min original id per community.
+  function ocFrom(comm) {
+    const groupMembers = {};
+    for (let i = 0; i < curN; i++) {
+      (groupMembers[comm[i]] || (groupMembers[comm[i]] = [])).push(...nodeMembers[i]);
+    }
+    const oc = new Array(N);
+    for (const c in groupMembers) {
+      const label = Math.min(...groupMembers[c]);
+      for (const v of groupMembers[c]) oc[v] = label;
+    }
+    return oc;
+  }
+  const ncomm = (oc) => new Set(oc).size;
+
+  const initOc = ocFrom(Array.from({ length: curN }, (_, i) => i));
+  events.push({
+    type: "init", comm: initOc, q: modularity(initOc), communities: N, level: 0, pass: 0,
+    message: `Every vertex starts in its own community (${N} communities, Q ≈ 0).`,
+  });
+
+  let level = 0;
+
+  function localMoving() {
+    const deg = degOf();
+    const comm = Array.from({ length: curN }, (_, i) => i);
+    const sigmaTot = deg.slice();
+    let improved = true, anyMove = false, pass = 0;
+    while (improved) {
+      improved = false; pass++;
+      for (let i = 0; i < curN; i++) {
+        const ki = deg[i];
+        const wTo = new Map();
+        for (const [j, w] of adj[i]) if (j !== i) wTo.set(comm[j], (wTo.get(comm[j]) || 0) + w);
+        const cur = comm[i];
+        sigmaTot[cur] -= ki;
+        let best = cur, bestGain = (wTo.get(cur) || 0) - sigmaTot[cur] * ki / m2;
+        for (const [c, w] of wTo) {
+          if (c === cur) continue;
+          const gain = w - sigmaTot[c] * ki / m2;
+          if (gain > bestGain + EPS) { bestGain = gain; best = c; }
+        }
+        sigmaTot[best] += ki;
+        if (best !== cur) {
+          comm[i] = best; improved = true; anyMove = true;
+          const oc = ocFrom(comm);
+          const q = modularity(oc);
+          const members = nodeMembers[i];
+          events.push({
+            type: "move", members: members.slice(), comm: oc, q,
+            communities: ncomm(oc), level, pass,
+            message: level === 0
+              ? `Move vertex <code>${members[0]}</code> into its best-gain neighbour's community — Q = <b>${q.toFixed(3)}</b>, ${ncomm(oc)} communities.`
+              : `Level ${level}: merge the super-community {${members.join(", ")}} into a neighbour — Q = <b>${q.toFixed(3)}</b>, ${ncomm(oc)} communities.`,
+          });
+        }
+      }
+    }
+    return { comm, anyMove };
+  }
+
+  function aggregate(comm) {
+    const cmap = new Map(); let k = 0;
+    for (const c of comm) if (!cmap.has(c)) cmap.set(c, k++);
+    const newMembers = Array.from({ length: k }, () => []);
+    for (let i = 0; i < curN; i++) newMembers[cmap.get(comm[i])].push(...nodeMembers[i]);
+    const newAdj = Array.from({ length: k }, () => new Map());
+    for (let i = 0; i < curN; i++) {
+      const ci = cmap.get(comm[i]);
+      for (const [j, w] of adj[i]) {
+        if (j < i) continue;
+        const cj = cmap.get(comm[j]);
+        const a = Math.min(ci, cj), b = Math.max(ci, cj);
+        if (a === b) newAdj[a].set(a, (newAdj[a].get(a) || 0) + w);
+        else {
+          newAdj[a].set(b, (newAdj[a].get(b) || 0) + w);
+          newAdj[b].set(a, (newAdj[b].get(a) || 0) + w);
+        }
+      }
+    }
+    nodeMembers = newMembers; adj = newAdj; curN = k;
+  }
+
+  for (;;) {
+    const { comm, anyMove } = localMoving();
+    const oc = ocFrom(comm);
+    if (!anyMove) {
+      events.push({
+        type: "done", comm: oc, q: modularity(oc), communities: ncomm(oc), level,
+        message: `Converged — <b>${ncomm(oc)}</b> communities, modularity Q = <b>${modularity(oc).toFixed(3)}</b>.`,
+      });
+      break;
+    }
+    if (!multilevel) {
+      events.push({
+        type: "done", comm: oc, q: modularity(oc), communities: ncomm(oc), level,
+        message: `Local moving converged (single level) — <b>${ncomm(oc)}</b> communities, Q = <b>${modularity(oc).toFixed(3)}</b>.`,
+      });
+      break;
+    }
+    aggregate(comm);
+    level++;
+    const aggOc = ocFrom(Array.from({ length: curN }, (_, i) => i));
+    events.push({
+      type: "aggregate", comm: aggOc, q: modularity(aggOc), communities: ncomm(aggOc), level,
+      message: `Aggregate: contract each community into a super-vertex and run local moving again at level ${level} (${curN} super-vertices).`,
+    });
+    if (curN === 1) {
+      events.push({
+        type: "done", comm: aggOc, q: modularity(aggOc), communities: 1, level,
+        message: `Everything collapsed into a single community. Q = <b>${modularity(aggOc).toFixed(3)}</b>.`,
+      });
+      break;
+    }
+  }
+  return { events };
+}
+
+// =======================================================================
+// Renderer
+// =======================================================================
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
+}
+
+const NODE_RADIUS = 14;
+const COMM_COLORS = [
+  "#6cb3ff", "#8ee08e", "#f3c04a", "#e0708e", "#c89bf0",
+  "#5fc2c9", "#f0a35e", "#9fd356", "#7aa2f7", "#d65f8a", "#b08cf0",
+];
+
+function paneState() {
+  return {
+    g: null, events: [], iEvt: 0, algo: null,
+    comm: null,                 // origVertex -> community label
+    colorIndex: {},             // community label -> palette index (stable)
+    nextColor: 0,
+    moving: new Set(),          // vertices moving this step
+    phaseLabel: "—",
+    statsCommunities: 0, statsQ: 0, statsLevel: 0, statsPass: 0,
+    finished: false,
+  };
+}
+
+// Stable palette index per community label (assigned on first appearance).
+function colorOf(state, label) {
+  if (state.colorIndex[label] === undefined) state.colorIndex[label] = state.nextColor++;
+  return COMM_COLORS[state.colorIndex[label] % COMM_COLORS.length];
+}
+
+function applyEvent(state, ev) {
+  state.moving = new Set();
+  if (ev.comm) state.comm = ev.comm.slice();
+  if (ev.communities !== undefined) state.statsCommunities = ev.communities;
+  if (ev.q !== undefined) state.statsQ = ev.q;
+  if (ev.level !== undefined) state.statsLevel = ev.level;
+  if (ev.pass !== undefined) state.statsPass = ev.pass;
+  switch (ev.type) {
+    case "init": state.phaseLabel = "init"; break;
+    case "move": state.phaseLabel = "local-move"; state.moving = new Set(ev.members); break;
+    case "aggregate": state.phaseLabel = "aggregate"; break;
+    case "done": state.phaseLabel = "done"; state.finished = true; break;
+  }
+}
+
+function draw(state, canvas) {
+  if (!state.g) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const padX = 34, padTop = 26, padBot = 22;
+  const xy = (nd) => ({ x: padX + nd.x * (w - 2 * padX), y: padTop + nd.y * (h - padTop - padBot) });
+  const comm = state.comm || state.g.nodes.map(n => n.id);
+
+  // ---- edges ----
+  for (const [u, v] of state.g.edges) {
+    const a = xy(state.g.nodes[u]), b = xy(state.g.nodes[v]);
+    const intra = comm[u] === comm[v];
+    ctx.save();
+    ctx.strokeStyle = cssVarValue(intra ? "var(--edge-intra)" : "var(--edge-inter)");
+    ctx.globalAlpha = intra ? 0.55 : 0.5;
+    ctx.lineWidth = intra ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- nodes ----
+  for (const nd of state.g.nodes) {
+    const p = xy(nd);
+    const moving = state.moving.has(nd.id);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, moving ? NODE_RADIUS + 2 : NODE_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = colorOf(state, comm[nd.id]);
+    ctx.fill();
+    ctx.lineWidth = moving ? 3 : 1.5;
+    ctx.strokeStyle = moving ? cssVarValue("var(--node-active)") : "#0c0f15";
+    ctx.stroke();
+    ctx.fillStyle = "#0c0f15";
+    ctx.font = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(nd.label || String(nd.id), p.x, p.y);
+    ctx.restore();
+  }
+}
+
+const _cssVarCache = {};
+function cssVarValue(v) {
+  if (!v.startsWith("var(")) return v;
+  const m = v.match(/var\(\s*(--[^,)\s]+)/);
+  if (!m) return "#888";
+  const name = m[1];
+  if (_cssVarCache[name]) return _cssVarCache[name];
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  _cssVarCache[name] = val;
+  return val;
+}
+
+// =======================================================================
+// UI wiring (dual-pane)
+// =======================================================================
+
+const ui = {
+  algoA: document.getElementById("algoA"), algoB: document.getElementById("algoB"),
+  example: document.getElementById("example"),
+  run: document.getElementById("run"), play: document.getElementById("play"),
+  pause: document.getElementById("pause"), step: document.getElementById("step"),
+  stepBack: document.getElementById("stepBack"), reset: document.getElementById("reset"),
+  speed: document.getElementById("speed"), speedLbl: document.getElementById("speedLbl"),
+  progress: document.getElementById("progress"),
+  paneA: document.getElementById("paneA"), paneB: document.getElementById("paneB"),
+  canvasA: document.getElementById("canvasA"), canvasB: document.getElementById("canvasB"),
+  A_h2: document.getElementById("A_h2"), B_h2: document.getElementById("B_h2"),
+  A_lbl0: document.getElementById("A_lbl0"), A_lbl1: document.getElementById("A_lbl1"),
+  A_lbl2: document.getElementById("A_lbl2"), A_lbl3: document.getElementById("A_lbl3"),
+  B_lbl0: document.getElementById("B_lbl0"), B_lbl1: document.getElementById("B_lbl1"),
+  B_lbl2: document.getElementById("B_lbl2"), B_lbl3: document.getElementById("B_lbl3"),
+  A_slot0: document.getElementById("A_slot0"), A_slot1: document.getElementById("A_slot1"),
+  A_slot2: document.getElementById("A_slot2"), A_slot3: document.getElementById("A_slot3"),
+  B_slot0: document.getElementById("B_slot0"), B_slot1: document.getElementById("B_slot1"),
+  B_slot2: document.getElementById("B_slot2"), B_slot3: document.getElementById("B_slot3"),
+  statusA: document.getElementById("statusA"), statusB: document.getElementById("statusB"),
+  eventInfoA: document.getElementById("eventInfoA"), eventInfoB: document.getElementById("eventInfoB"),
+  A_paths: document.getElementById("A_paths"), B_paths: document.getElementById("B_paths"),
+};
+
+const state = { paneA: paneState(), paneB: paneState(), playing: false, timer: null };
+
+function runAlgo(algo, g) {
+  if (algo === "local") return runLouvain(g, false);
+  if (algo === "multi") return runLouvain(g, true);
+  throw new Error("unknown algo " + algo);
+}
+
+function populateExamples() {
+  const list = examplesForPair();
+  const prev = ui.example.value;
+  ui.example.innerHTML = "";
+  for (const key of list) {
+    const opt = document.createElement("option");
+    opt.value = key; opt.textContent = EXAMPLE_LABELS[key] || key;
+    ui.example.appendChild(opt);
+  }
+  if (list.includes(prev)) ui.example.value = prev;
+}
+
+function updateHeader(algo, side) {
+  const info = ALGO_INFO[algo];
+  const h2 = side === "A" ? ui.A_h2 : ui.B_h2;
+  h2.innerHTML = escapeHtml(info.h2) + ' <span class="badge">' + escapeHtml(info.badge) + '</span>';
+  const lbls = side === "A" ? [ui.A_lbl0, ui.A_lbl1, ui.A_lbl2, ui.A_lbl3]
+                            : [ui.B_lbl0, ui.B_lbl1, ui.B_lbl2, ui.B_lbl3];
+  for (let i = 0; i < 4; i++) lbls[i].textContent = info.slotLabels[i];
+}
+
+function slotsFor(s) {
+  const q = s.statsQ.toFixed(3);
+  if (s.algo === "local") return [s.phaseLabel, s.statsCommunities, q, s.statsPass];
+  if (s.algo === "multi") return [s.phaseLabel, s.statsCommunities, q, s.statsLevel];
+  return [s.phaseLabel, 0, q, 0];
+}
+
+function updateSlots() {
+  const a = slotsFor(state.paneA);
+  ui.A_slot0.textContent = a[0]; ui.A_slot1.textContent = a[1]; ui.A_slot2.textContent = a[2]; ui.A_slot3.textContent = a[3];
+  const b = slotsFor(state.paneB);
+  ui.B_slot0.textContent = b[0]; ui.B_slot1.textContent = b[1]; ui.B_slot2.textContent = b[2]; ui.B_slot3.textContent = b[3];
+}
+
+function loadAndRun() {
+  const algoA = ui.algoA.value, algoB = ui.algoB.value, exKey = ui.example.value;
+  if (!exKey) return;
+  const specA = EXAMPLES[exKey](), specB = EXAMPLES[exKey]();
+
+  let evA, evB;
+  try { evA = runAlgo(algoA, specA).events; }
+  catch (e) { evA = [{ type: "done", comm: specA.nodes.map(n => n.id), q: 0, communities: specA.nodes.length, level: 0, message: e.message }]; }
+  try { evB = runAlgo(algoB, specB).events; }
+  catch (e) { evB = [{ type: "done", comm: specB.nodes.map(n => n.id), q: 0, communities: specB.nodes.length, level: 0, message: e.message }]; }
+
+  state.paneA = paneState();
+  state.paneA.g = specA; state.paneA.events = evA; state.paneA.algo = algoA;
+  state.paneB = paneState();
+  state.paneB.g = specB; state.paneB.events = evB; state.paneB.algo = algoB;
+
+  ui.paneA.classList.remove("done"); ui.paneB.classList.remove("done");
+  ui.statusA.textContent = specA.title + " — " + specA.hint;
+  ui.statusB.textContent = specB.title + " — " + specB.hint;
+  ui.eventInfoA.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
+  ui.eventInfoB.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
+  ui.A_paths.innerHTML = ""; ui.B_paths.innerHTML = "";
+
+  updateHeader(algoA, "A"); updateHeader(algoB, "B");
+  updateSlots();
+  draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB);
+  setProgress();
+}
+
+function setProgress() {
+  const total = Math.max(state.paneA.events.length, state.paneB.events.length);
+  const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
+  ui.progress.textContent = "step " + cur + " / " + total;
+}
+
+function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
+  if (s.iEvt >= s.events.length) return false;
+  const ev = s.events[s.iEvt];
+  applyEvent(s, ev); s.iEvt++;
+  infoEl.innerHTML = ev.message || "";
+  draw(s, canvas);
+  if (ev.type === "done") { renderResult(s, pathsEl); paneEl.classList.add("done"); }
+  return true;
+}
+
+function stepForward() {
+  let any = false;
+  if (state.paneA.iEvt < state.paneA.events.length)
+    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA) || any;
+  if (state.paneB.iEvt < state.paneB.events.length)
+    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB) || any;
+  updateSlots(); setProgress();
+  if (!any) pause();
+  return any;
+}
+
+function stepBackward() {
+  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
+  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA);
+  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB);
+  updateSlots(); setProgress();
+}
+
+function rebuildToStep(s, target, infoEl, canvas, pathsEl, paneEl) {
+  const g = s.g, evs = s.events, algo = s.algo;
+  const fresh = paneState();
+  fresh.g = g; fresh.events = evs; fresh.algo = algo;
+  const limit = Math.min(target, evs.length);
+  for (let i = 0; i < limit; i++) applyEvent(fresh, evs[i]);
+  fresh.iEvt = limit;
+  for (const k in fresh) s[k] = fresh[k];
+  infoEl.innerHTML = limit === 0 ? "At step 0 — graph loaded, no events applied yet." : (evs[limit - 1].message || "");
+  paneEl.classList.toggle("done", s.finished);
+  draw(s, canvas);
+  if (s.finished) renderResult(s, pathsEl); else pathsEl.innerHTML = "";
+}
+
+function renderResult(s, pathsEl) {
+  pathsEl.innerHTML = "";
+  if (!s.comm) return;
+  const groups = {};
+  s.g.nodes.forEach(n => (groups[s.comm[n.id]] || (groups[s.comm[n.id]] = [])).push(n.label));
+  Object.keys(groups).forEach(label => {
+    const li = document.createElement("li");
+    const color = colorOf(s, Number(label));
+    li.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color};margin-right:6px;vertical-align:middle"></span>` +
+      `<span class="seq">{${groups[label].join(", ")}}</span>`;
+    pathsEl.appendChild(li);
+  });
+  const li = document.createElement("li");
+  li.style.listStyle = "none"; li.style.marginLeft = "-16px"; li.style.marginTop = "4px";
+  li.innerHTML = `<span class="total">${Object.keys(groups).length} communities · modularity Q = ${s.statsQ.toFixed(3)}</span>`;
+  pathsEl.appendChild(li);
+}
+
+function play() {
+  if (state.playing) return;
+  state.playing = true;
+  ui.play.disabled = true; ui.pause.disabled = false;
+  const tick = () => {
+    if (!state.playing) return;
+    if (!stepForward()) { pause(); return; }
+    state.timer = setTimeout(tick, parseInt(ui.speed.value, 10));
+  };
+  tick();
+}
+
+function pause() {
+  state.playing = false;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = null;
+  ui.play.disabled = false; ui.pause.disabled = true;
+}
+
+function reset() { pause(); loadAndRun(); }
+
+ui.algoA.addEventListener("change", () => { populateExamples(); loadAndRun(); });
+ui.algoB.addEventListener("change", () => { populateExamples(); loadAndRun(); });
+ui.example.addEventListener("change", () => loadAndRun());
+ui.run.addEventListener("click", () => loadAndRun());
+ui.play.addEventListener("click", play);
+ui.pause.addEventListener("click", pause);
+ui.step.addEventListener("click", () => { pause(); stepForward(); });
+ui.stepBack.addEventListener("click", () => { pause(); stepBackward(); });
+ui.reset.addEventListener("click", reset);
+ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+window.addEventListener("resize", () => { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); });
+
+populateExamples();
+loadAndRun();
+</script>
+
+</body>
+</html>
