@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bipartite matching — JGraphT algorithm visualizations</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1c2230;
+    --ink: #e6e8ef;
+    --muted: #8a93a6;
+    --accent: #6cb3ff;
+    --accent2: #8ee08e;
+    --warn: #f3c04a;
+    --bad: #f06f6f;
+    --edge: #434a5e;
+    --edge-matched: #ffd166;         /* gold — in the matching */
+    --edge-aug: #5fc2c9;             /* cyan — current augmenting path */
+    --edge-remove: #d8595e;          /* red — matched edge being removed by an augment */
+    --edge-considered: #8ee08e;      /* green — edge being considered (greedy) */
+    --node-fill: #2a3142;
+    --node-left: #6cb3ff;            /* left partition stroke */
+    --node-right: #c58cf0;           /* right partition stroke */
+    --node-matched: #8ee08e;         /* matched vertex fill */
+    --node-active: #f0884a;          /* current vertex */
+    --node-free: #2a3142;
+  }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  header {
+    padding: 8px 14px; border-bottom: 1px solid #232838;
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 6; background: var(--bg);
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  header h1 a { color: var(--muted); text-decoration: none; }
+  header h1 a:hover { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 6px 14px; background: var(--panel); border-bottom: 1px solid #232838;
+    font-size: 12px; position: sticky; top: 33px; z-index: 5;
+  }
+  .controls label { color: var(--muted); margin-left: 6px; }
+  .controls select, .controls button, .controls input[type=range] {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid #2c3447; padding: 6px 10px; border-radius: 6px; font: inherit;
+  }
+  .controls button { cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button.primary { background: var(--accent); color: #0a0e16; border-color: var(--accent); font-weight: 600; }
+  .controls button.primary:hover { filter: brightness(1.08); }
+  .controls .spacer { flex: 1; }
+  .controls .transport {
+    display: inline-flex; gap: 0; align-items: stretch;
+    border: 1px solid #2c3447; border-radius: 8px; overflow: hidden; background: var(--panel-2);
+  }
+  .controls .transport button {
+    border: none; border-right: 1px solid #2c3447; border-radius: 0;
+    padding: 6px 12px; min-width: 36px; font-size: 14px; background: transparent; color: var(--ink);
+  }
+  .controls .transport button:last-child { border-right: none; }
+  .controls .transport button:disabled { color: #555a6a; cursor: default; }
+  .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
+  .panes { display: grid; gap: 10px; padding: 10px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid #232838; border-radius: 10px; display: flex; flex-direction: column; }
+  .pane h2 {
+    margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid #232838; display: flex; align-items: center; gap: 8px;
+  }
+  .pane h2 .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font-weight: 500; }
+  .pane .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-bottom: 1px solid #232838; }
+  .pane .stat {
+    padding: 5px 10px; border-right: 1px solid #232838;
+    display: flex; flex-direction: column; justify-content: space-between; min-height: 48px;
+  }
+  .pane .stat:last-child { border-right: none; }
+  .pane .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; min-height: 24px; }
+  .pane .stat .v { color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1; }
+  .pane canvas { width: 100%; height: min(42vh, 360px); min-height: 220px; display: block; background: #0c0f15; }
+  .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
+  .pane .event-info {
+    padding: 8px 12px; font-size: 12px; line-height: 1.55; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d; min-height: 38px;
+  }
+  .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .pane.done .event-info { background: #0f1f17; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
+    background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
+    font-size: 11px; color: var(--muted);
+  }
+  .legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .legend .ln { display: inline-block; width: 16px; height: 0; border-top-width: 3px; border-top-style: solid; margin-right: 4px; vertical-align: middle; }
+  .legend .ring { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid; margin-right: 4px; vertical-align: middle; }
+  details.explainer { margin: 10px; background: var(--panel); border: 1px solid #232838; border-radius: 10px; }
+  details.explainer > summary { cursor: pointer; padding: 8px 14px; font-size: 12px; color: var(--ink); font-weight: 600; list-style: none; }
+  details.explainer > summary::-webkit-details-marker { display: none; }
+  details.explainer > .body { padding: 0 14px 12px; font-size: 12px; color: #c0c6d6; line-height: 1.55; }
+  details.explainer .glossary { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 6px; }
+  details.explainer .card { background: var(--panel-2); border: 1px solid #2c3447; border-radius: 8px; padding: 8px 10px; font-size: 11px; }
+  details.explainer .card .term { color: var(--accent); font-weight: 600; margin-bottom: 3px; }
+  details.explainer .card .def { color: #c0c6d6; }
+  details.explainer code { background: #11151d; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .results { padding: 0 10px 10px; }
+  .results .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .results h3 { margin: 8px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .results ol { margin: 0 0 0 16px; padding: 0; font-size: 12px; color: #c0c6d6; }
+  .results ol li { margin: 2px 0; }
+  .results .seq { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+  .results .total { color: var(--accent2); font-weight: 600; }
+  .results .sub { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="/">JGraphT algorithm visualizations</a> &nbsp;›&nbsp; Bipartite matching</h1>
+  <span class="sub">Greedy vs. augmenting paths vs. Hopcroft-Karp — why a maximal matching isn't always maximum</span>
+</header>
+
+<div class="controls">
+  <label for="algoA">A</label>
+  <select id="algoA">
+    <option value="greedy" selected>Greedy (maximal, ½-approx)</option>
+    <option value="kuhn">Augmenting paths (one at a time)</option>
+    <option value="hk">Hopcroft-Karp (batched shortest paths)</option>
+  </select>
+  <label for="algoB">B</label>
+  <select id="algoB">
+    <option value="greedy">Greedy (maximal, ½-approx)</option>
+    <option value="kuhn">Augmenting paths (one at a time)</option>
+    <option value="hk" selected>Hopcroft-Karp (batched shortest paths)</option>
+  </select>
+  <label for="example">Example</label>
+  <select id="example"></select>
+  <span class="transport">
+    <button id="run" class="primary" title="Load — build the graph and the event stream">⏏</button>
+    <button id="stepBack" title="Previous step">⏮</button>
+    <button id="play" title="Play">▶</button>
+    <button id="pause" disabled title="Pause">❚❚</button>
+    <button id="step" title="Next step">⏭</button>
+    <button id="reset" title="Stop and reset to step 0">⏹</button>
+  </span>
+  <label for="speed">Speed</label>
+  <input id="speed" type="range" min="60" max="1200" value="480" step="20">
+  <span id="speedLbl" class="sub">480 ms/step</span>
+  <span class="spacer"></span>
+  <span id="progress" class="sub">step 0 / 0</span>
+</div>
+
+<div class="panes" id="panes">
+  <div class="pane" id="paneA">
+    <h2 id="A_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k" id="A_lbl0">phase</div><div class="v" id="A_slot0">—</div></div>
+      <div class="stat"><div class="k" id="A_lbl1">matching size</div><div class="v" id="A_slot1">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl2">scanned</div><div class="v" id="A_slot2">0</div></div>
+      <div class="stat"><div class="k" id="A_lbl3">unmatched</div><div class="v" id="A_slot3">0</div></div>
+    </div>
+    <canvas id="canvasA"></canvas>
+    <div class="status" id="statusA">Ready.</div>
+    <div class="event-info" id="eventInfoA">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+
+  <div class="pane" id="paneB">
+    <h2 id="B_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k" id="B_lbl0">phase</div><div class="v" id="B_slot0">—</div></div>
+      <div class="stat"><div class="k" id="B_lbl1">matching size</div><div class="v" id="B_slot1">0</div></div>
+      <div class="stat"><div class="k" id="B_lbl2">BFS phases</div><div class="v" id="B_slot2">0</div></div>
+      <div class="stat"><div class="k" id="B_lbl3">aug. paths</div><div class="v" id="B_slot3">0</div></div>
+    </div>
+    <canvas id="canvasB"></canvas>
+    <div class="status" id="statusB">Ready.</div>
+    <div class="event-info" id="eventInfoB">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+</div>
+
+<div class="results" id="results">
+  <div class="row">
+    <div><h3>Pane A — matching</h3><ol id="A_paths"></ol></div>
+    <div><h3>Pane B — matching</h3><ol id="B_paths"></ol></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="ln" style="border-top-color:var(--edge-matched)"></span>matched edge</span>
+  <span><span class="ln" style="border-top-color:var(--edge-aug)"></span>augmenting path</span>
+  <span><span class="ln" style="border-top-color:var(--edge-considered)"></span>edge considered (greedy)</span>
+  <span><span class="ring" style="border-color:var(--node-left)"></span>left vertex</span>
+  <span><span class="ring" style="border-color:var(--node-right)"></span>right vertex</span>
+  <span><span class="sw" style="background:var(--node-matched)"></span>matched vertex</span>
+  <span><span class="sw" style="background:var(--node-active)"></span>current vertex</span>
+</div>
+
+<details class="explainer" id="glossaryWrap" open>
+  <summary>Glossary — matchings, augmenting paths, maximal vs maximum, Hopcroft-Karp</summary>
+  <div class="body glossary">
+    <div class="card"><div class="term">Bipartite graph</div><div class="def">Vertices split into two sides (left / right) with edges only between sides. Drawn as two columns; left strokes are blue, right strokes purple.</div></div>
+    <div class="card"><div class="term">Matching</div><div class="def">A set of edges with no shared endpoint — each vertex is matched to at most one partner. Matched edges are gold; matched vertices fill green.</div></div>
+    <div class="card"><div class="term">Maximal vs maximum</div><div class="def"><em>Maximal</em>: no edge can be added without a conflict (a local dead end). <em>Maximum</em>: the largest possible matching (global optimum). Greedy gives a maximal matching that can be as small as half the maximum — watch the <em>greedy-trap</em> example.</div></div>
+    <div class="card"><div class="term">Free (exposed) vertex</div><div class="def">A vertex not yet matched. Augmenting always starts and ends at a free vertex (one on each side).</div></div>
+    <div class="card"><div class="term">Alternating path</div><div class="def">A path whose edges alternate between <em>not in</em> the matching and <em>in</em> the matching.</div></div>
+    <div class="card"><div class="term">Augmenting path</div><div class="def">An alternating path that starts and ends at free vertices. It has one more non-matching edge than matching edges, so <em>flipping</em> it (swap in/out of the matching) increases the matching size by exactly one.</div></div>
+    <div class="card"><div class="term">Berge's theorem</div><div class="def">A matching is maximum if and only if it admits no augmenting path. This is why "augment until none remains" is correct, and why greedy (which never augments) can stop short.</div></div>
+    <div class="card"><div class="term">Greedy matching</div><div class="def"><code>GreedyMaximumCardinalityMatching</code> (unsorted): walk the vertices; whenever both endpoints of an edge are still free, add it. Fast <code>O(E)</code>, always maximal, but only a ½-approximation.</div></div>
+    <div class="card"><div class="term">Augmenting-path method</div><div class="def">From each free left vertex, search (DFS) for a single augmenting path and flip it. Repeat until none remain. This is the classic Hungarian / Kuhn bipartite matching, running in <code>O(V·E)</code>. The conceptual core of Hopcroft-Karp.</div></div>
+    <div class="card"><div class="term">Hopcroft-Karp</div><div class="def"><code>HopcroftKarpMaximumCardinalityBipartiteMatching</code>: a BFS finds the <em>length of the shortest</em> augmenting path and layers the graph; a DFS then extracts <em>all</em> vertex-disjoint shortest augmenting paths and flips them at once. Only <code>O(√V)</code> such phases are needed, giving <code>O(E·√V)</code>. It also begins from a greedy warm-start matching.</div></div>
+    <div class="card"><div class="term">Why batching helps</div><div class="def">Augmenting one path at a time can take up to <code>V</code> phases. Hopcroft-Karp proves that after each batch the shortest augmenting path gets strictly longer, capping the number of phases at <code>√V</code> — far fewer searches on large graphs.</div></div>
+  </div>
+</details>
+
+<details class="explainer" id="narrativeWrap">
+  <summary>What you're watching — three matching algorithms</summary>
+  <div class="body">
+    <h3 style="margin-top:0">Pick any two algorithms with the A and B selectors</h3>
+    <p>
+      Three maximum-cardinality bipartite matching strategies, two of them
+      JGraphT classes from <code>org.jgrapht.alg.matching</code>:
+    </p>
+    <ul>
+      <li><b>Greedy</b> — <code>GreedyMaximumCardinalityMatching</code>. Adds any
+        conflict-free edge it meets. Stops at a <em>maximal</em> matching that may
+        be far from maximum (see the greedy-trap example: it finds 2 where the
+        maximum is 4).</li>
+      <li><b>Augmenting paths</b> — the classic Kuhn / Hungarian method: find one
+        augmenting path at a time and flip it. Always reaches the maximum; the
+        building block Hopcroft-Karp optimises.</li>
+      <li><b>Hopcroft-Karp</b> — <code>HopcroftKarpMaximumCardinalityBipartiteMatching</code>.
+        Warm-starts greedily, then in each phase finds the shortest augmenting
+        path length by BFS and flips <em>all</em> disjoint shortest paths together.
+        Reaches the same maximum in far fewer phases.</li>
+    </ul>
+    <p>
+      <b>The punchline:</b> greedy's matching size can be strictly smaller than
+      the other two, which always agree on the true maximum. Compare the phase
+      and augmenting-path counts to see why Hopcroft-Karp scales better. The two
+      panes run independently; total progress is the slower pane's step count.
+    </p>
+  </div>
+</details>
+
+<script>
+"use strict";
+
+// =======================================================================
+// Bipartite-graph examples.
+// =======================================================================
+//
+//   { title, hint,
+//     nodes: [{id, x, y, label, side}],   side 0 = left, 1 = right
+//     edges: [[u, v]] }                   u on the left, v on the right
+
+function bipartite(title, hint, leftLabels, rightLabels, edges) {
+  const nodes = [];
+  const nL = leftLabels.length, nR = rightLabels.length;
+  const yspread = (k, n) => n === 1 ? 0.5 : 0.14 + (0.72 * k) / (n - 1);
+  leftLabels.forEach((label, i) => nodes.push({ id: i, x: 0.18, y: yspread(i, nL), label, side: 0 }));
+  rightLabels.forEach((label, j) => nodes.push({ id: nL + j, x: 0.82, y: yspread(j, nR), label, side: 1 }));
+  return { title, hint, nodes, edges, nLeft: nL };
+}
+
+const EXAMPLES = {
+  simple: () => bipartite(
+    "Balanced (perfect matching exists)",
+    "A perfect matching exists; every algorithm matches all four left vertices.",
+    ["A", "B", "C", "D"], ["1", "2", "3", "4"],
+    [[0, 4], [0, 5], [1, 5], [1, 6], [2, 6], [2, 7], [3, 7], [3, 4]]),
+
+  trap: () => bipartite(
+    "Greedy trap (greedy 2, maximum 4)",
+    "Greedy grabs A–1 and C–3, blocking B and D. Augmenting reaches the maximum of 4.",
+    ["A", "B", "C", "D"], ["1", "2", "3", "4"],
+    [[0, 4], [0, 5], [1, 4], [2, 6], [2, 7], [3, 6]]),
+
+  augment: () => bipartite(
+    "One augmenting path (greedy 3, maximum 4)",
+    "Greedy stops at 3; a single length-3 augmenting path lifts it to 4.",
+    ["A", "B", "C", "D"], ["1", "2", "3", "4"],
+    [[0, 4], [0, 5], [1, 4], [2, 5], [2, 6], [3, 6], [3, 7]]),
+
+  unbalanced: () => bipartite(
+    "Unbalanced (3 left, 4 right)",
+    "The left side can be matched completely (size 3); one right vertex stays free.",
+    ["A", "B", "C"], ["1", "2", "3", "4"],
+    [[0, 3], [0, 4], [1, 4], [1, 5], [2, 5], [2, 6], [0, 6]]),
+};
+
+const EXAMPLE_ORDER = ["simple", "trap", "augment", "unbalanced"];
+const EXAMPLE_LABELS = {
+  simple:     "Balanced (perfect matching)",
+  trap:       "Greedy trap (greedy 2, max 4)",
+  augment:    "One augmenting path (greedy 3, max 4)",
+  unbalanced: "Unbalanced (3 left, 4 right)",
+};
+function examplesForPair() { return EXAMPLE_ORDER; }
+
+const ALGO_INFO = {
+  "greedy": {
+    h2: "GreedyMaximumCardinalityMatching",
+    badge: "maximal · ½-approx · O(E)",
+    slotLabels: ["phase", "matching size", "scanned", "unmatched"],
+  },
+  "kuhn": {
+    h2: "Augmenting paths (Kuhn)",
+    badge: "one path per search · O(V·E)",
+    slotLabels: ["phase", "matching size", "aug. paths", "DFS steps"],
+  },
+  "hk": {
+    h2: "HopcroftKarpMaximumCardinalityBipartiteMatching",
+    badge: "batched shortest paths · O(E·√V)",
+    slotLabels: ["phase", "matching size", "BFS phases", "aug. paths"],
+  },
+};
+
+// =======================================================================
+// Helpers
+// =======================================================================
+
+function lbl(g, i) { return g.nodes[i].label; }
+function ek(u, v) { return Math.min(u, v) + ":" + Math.max(u, v); }
+
+function leftVertices(g) {
+  return g.nodes.filter(n => n.side === 0).map(n => n.id);
+}
+// adjacency restricted to right-neighbours of each left vertex, in edge order
+function leftAdjacency(g) {
+  const adj = {};
+  leftVertices(g).forEach(u => (adj[u] = []));
+  g.edges.forEach(([u, v]) => {
+    // normalise so the left endpoint keys the list
+    const left = g.nodes[u].side === 0 ? u : v;
+    const right = g.nodes[u].side === 0 ? v : u;
+    adj[left].push(right);
+  });
+  return adj;
+}
+function fullAdjacency(g) {
+  const adj = {};
+  g.nodes.forEach(n => (adj[n.id] = []));
+  g.edges.forEach(([u, v]) => { adj[u].push(v); adj[v].push(u); });
+  return adj;
+}
+function matchSize(match) {
+  let c = 0;
+  for (let i = 0; i < match.length; i++) if (match[i] !== -1 && match[i] > i) c++;
+  return c;
+}
+
+// =======================================================================
+// Greedy — JS port of org.jgrapht.alg.matching.GreedyMaximumCardinalityMatching (unsorted)
+// =======================================================================
+
+function runGreedy(g) {
+  const events = [];
+  const n = g.nodes.length;
+  const adj = fullAdjacency(g);
+  const match = Array(n).fill(-1);
+  let scanned = 0;
+
+  events.push({
+    type: "phase", phase: "scan",
+    message:
+      "Greedy: walk the vertices in order; whenever a vertex is still free, " +
+      "match it to its first free neighbour.",
+  });
+
+  for (let v = 0; v < n; v++) {
+    if (match[v] !== -1) continue;
+    scanned++;
+    events.push({
+      type: "g-visit", vertex: v, scanned,
+      message: `Visit free vertex <code>${lbl(g, v)}</code>; look for a free neighbour.`,
+    });
+    let matchedHere = false;
+    for (const w of adj[v]) {
+      events.push({
+        type: "g-try", u: v, w, scanned,
+        message: `Consider edge <code>${lbl(g, v)}–${lbl(g, w)}</code>.`,
+      });
+      if (match[w] === -1) {
+        match[v] = w; match[w] = v;
+        events.push({
+          type: "g-match", u: v, w, match: match.slice(), size: matchSize(match), scanned,
+          message:
+            `<code>${lbl(g, w)}</code> is free — add <code>${lbl(g, v)}–${lbl(g, w)}</code> ` +
+            `to the matching (size ${matchSize(match)}).`,
+        });
+        matchedHere = true;
+        break;
+      } else {
+        events.push({
+          type: "g-skip", u: v, w, scanned,
+          message: `<code>${lbl(g, w)}</code> is already matched — skip.`,
+        });
+      }
+    }
+    if (!matchedHere) {
+      events.push({
+        type: "g-stuck", vertex: v, scanned,
+        message: `<code>${lbl(g, v)}</code> has no free neighbour — it stays <b>unmatched</b>.`,
+      });
+    }
+  }
+
+  events.push({
+    type: "match-done", match: match.slice(), size: matchSize(match), scanned,
+    message:
+      `Greedy finished with a <b>maximal</b> matching of size ${matchSize(match)}. ` +
+      `(Maximal ≠ maximum — it may have stopped short.)`,
+  });
+  return { events };
+}
+
+// =======================================================================
+// Augmenting-path method (Kuhn) — one augmenting path per search
+// =======================================================================
+
+function runKuhn(g) {
+  const events = [];
+  const n = g.nodes.length;
+  const adj = leftAdjacency(g);
+  const match = Array(n).fill(-1);
+  const L = leftVertices(g);
+  let augPaths = 0, dfsSteps = 0;
+
+  events.push({
+    type: "phase", phase: "augment",
+    message:
+      "Augmenting paths: from each free left vertex, search for an augmenting path " +
+      "(alternating free/matched edges) and flip it.",
+  });
+
+  // DFS returns the augmenting path [u, v, ...] (vertex list) or null.
+  function dfs(u, seen, trace) {
+    for (const v of adj[u]) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      dfsSteps++;
+      trace.push({ type: "k-explore", u, v, dfsSteps,
+        message: `Try <code>${lbl(g, u)}–${lbl(g, v)}</code>.` +
+          (match[v] === -1 ? ` <code>${lbl(g, v)}</code> is free — augmenting path found.`
+                           : ` <code>${lbl(g, v)}</code> is matched to <code>${lbl(g, match[v])}</code> — recurse.`) });
+      if (match[v] === -1) {
+        match[v] = u; match[u] = v;
+        return [u, v];
+      }
+      const prev = match[v];
+      const sub = dfs(prev, seen, trace);
+      if (sub) {
+        match[v] = u; match[u] = v;
+        return [u, v, ...sub];
+      }
+    }
+    return null;
+  }
+
+  for (const u of L) {
+    if (match[u] !== -1) continue;
+    events.push({
+      type: "k-start", vertex: u,
+      message: `Search for an augmenting path from free vertex <code>${lbl(g, u)}</code>.`,
+    });
+    const trace = [];
+    const seen = new Set();
+    const path = dfs(u, seen, trace);
+    for (const ev of trace) events.push(ev);
+    if (path) {
+      augPaths++;
+      events.push({
+        type: "k-augment", path, match: match.slice(), size: matchSize(match), augPaths, dfsSteps,
+        message:
+          `Augmenting path <code class="seq">${path.map(x => lbl(g, x)).join(" – ")}</code> ` +
+          `— flip it. Matching size is now ${matchSize(match)}.`,
+      });
+    } else {
+      events.push({
+        type: "k-fail", vertex: u, dfsSteps,
+        message: `No augmenting path from <code>${lbl(g, u)}</code> — it stays unmatched.`,
+      });
+    }
+  }
+
+  events.push({
+    type: "match-done", match: match.slice(), size: matchSize(match), augPaths, dfsSteps,
+    message: `Done — <b>maximum</b> matching of size ${matchSize(match)} (${augPaths} augmenting path(s)).`,
+  });
+  return { events };
+}
+
+// =======================================================================
+// Hopcroft-Karp — JS port of HopcroftKarpMaximumCardinalityBipartiteMatching
+// =======================================================================
+
+function runHopcroftKarp(g) {
+  const events = [];
+  const n = g.nodes.length;
+  const adj = leftAdjacency(g);
+  const L = leftVertices(g);
+  const match = Array(n).fill(-1);
+  const FREE = n;                // sentinel = reaching a free right vertex (DUMMY)
+  const INF = Infinity;
+  let phases = 0, augPaths = 0;
+
+  events.push({
+    type: "phase", phase: "init",
+    message:
+      "Hopcroft-Karp: greedy warm-start, then repeat — BFS for the shortest augmenting " +
+      "path length, DFS for all disjoint shortest paths, flip them together.",
+  });
+
+  // ---- greedy warm start ----
+  for (const u of L) {
+    for (const v of adj[u]) {
+      if (match[v] === -1) {
+        match[u] = v; match[v] = u;
+        events.push({
+          type: "hk-warm", u, v, match: match.slice(), size: matchSize(match),
+          message: `Warm-start: match <code>${lbl(g, u)}–${lbl(g, v)}</code> greedily.`,
+        });
+        break;
+      }
+    }
+  }
+
+  const dist = {};
+  function bfs() {
+    const queue = [];
+    for (const u of L) {
+      if (match[u] === -1) { dist[u] = 0; queue.push(u); }
+      else dist[u] = INF;
+    }
+    dist[FREE] = INF;
+    while (queue.length) {
+      const u = queue.shift();
+      if (dist[u] < dist[FREE]) {
+        for (const v of adj[u]) {
+          const nu = match[v] === -1 ? FREE : match[v];
+          if (dist[nu] === INF) {
+            dist[nu] = dist[u] + 1;
+            if (nu !== FREE) queue.push(nu);
+          }
+        }
+      }
+    }
+    return dist[FREE] !== INF;
+  }
+
+  function dfs(u) {
+    for (const v of adj[u]) {
+      const nu = match[v] === -1 ? FREE : match[v];
+      if (dist[nu] === dist[u] + 1) {
+        if (nu === FREE) { match[v] = u; match[u] = v; return [u, v]; }
+        const sub = dfs(nu);
+        if (sub) { match[v] = u; match[u] = v; return [u, v, ...sub]; }
+      }
+    }
+    dist[u] = INF;
+    return null;
+  }
+
+  while (bfs()) {
+    phases++;
+    const freeLeft = L.filter(u => match[u] === -1);
+    events.push({
+      type: "hk-bfs", phase: phases, augLen: dist[FREE], freeLeft: freeLeft.slice(),
+      message:
+        `Phase ${phases}: BFS from the ${freeLeft.length} free left vertex(es) ` +
+        `finds shortest augmenting path length <b>${dist[FREE]}</b>. Now extract disjoint paths.`,
+    });
+    for (const u of L) {
+      if (match[u] === -1) {
+        const path = dfs(u);
+        if (path) {
+          augPaths++;
+          events.push({
+            type: "hk-augment", path, match: match.slice(), size: matchSize(match),
+            phase: phases, augPaths,
+            message:
+              `Disjoint shortest path <code class="seq">${path.map(x => lbl(g, x)).join(" – ")}</code> ` +
+              `— flip. Matching size ${matchSize(match)}.`,
+          });
+        }
+      }
+    }
+    events.push({
+      type: "hk-phase-end", phase: phases,
+      message: `Phase ${phases} done; all length-${dist[FREE]} paths flipped. Rebuild the BFS layers.`,
+    });
+  }
+
+  events.push({
+    type: "match-done", match: match.slice(), size: matchSize(match), phases, augPaths,
+    message: `Done — <b>maximum</b> matching of size ${matchSize(match)} in ${phases} BFS phase(s).`,
+  });
+  return { events };
+}
+
+// =======================================================================
+// Renderer
+// =======================================================================
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
+}
+
+const NODE_RADIUS = 17;
+
+function paneState() {
+  return {
+    g: null, events: [], iEvt: 0, algo: null,
+    match: null,
+    phaseLabel: "—",
+    current: -1,
+    considering: null,           // edge key (transient)
+    augEdges: new Set(),         // edge keys on the current augmenting path (transient)
+    matchLog: [],                // [{a, b}] matched pairs in add order
+    statsSize: 0, statsScanned: 0, statsAug: 0, statsPhases: 0, statsDfs: 0,
+    finished: false,
+  };
+}
+function ensureMatch(state) {
+  if (!state.match && state.g) state.match = Array(state.g.nodes.length).fill(-1);
+}
+
+function augEdgeSet(g, path) {
+  const s = new Set();
+  for (let i = 0; i + 1 < path.length; i++) s.add(ek(path[i], path[i + 1]));
+  return s;
+}
+
+function applyEvent(state, ev) {
+  ensureMatch(state);
+  state.current = -1;
+  state.considering = null;
+  state.augEdges = new Set();
+
+  switch (ev.type) {
+    case "phase":
+      state.phaseLabel = ev.phase;
+      break;
+
+    // ---------- greedy ----------
+    case "g-visit":
+      state.phaseLabel = "scan"; state.current = ev.vertex; state.statsScanned = ev.scanned;
+      break;
+    case "g-try":
+      state.current = ev.u; state.considering = ek(ev.u, ev.w);
+      break;
+    case "g-skip":
+      state.current = ev.u; state.considering = ek(ev.u, ev.w);
+      break;
+    case "g-match":
+      state.match = ev.match.slice(); state.current = ev.u;
+      state.augEdges = new Set([ek(ev.u, ev.w)]);
+      state.statsSize = ev.size; state.statsScanned = ev.scanned;
+      state.matchLog.push({ a: ev.u, b: ev.w });
+      break;
+    case "g-stuck":
+      state.current = ev.vertex;
+      break;
+
+    // ---------- kuhn ----------
+    case "k-start":
+      state.phaseLabel = "augment"; state.current = ev.vertex;
+      break;
+    case "k-explore":
+      state.current = ev.u; state.considering = ek(ev.u, ev.v); state.statsDfs = ev.dfsSteps;
+      break;
+    case "k-augment":
+      state.match = ev.match.slice();
+      state.augEdges = augEdgeSet(state.g, ev.path);
+      state.statsSize = ev.size; state.statsAug = ev.augPaths; state.statsDfs = ev.dfsSteps;
+      rebuildMatchLog(state);
+      break;
+    case "k-fail":
+      state.current = ev.vertex; state.statsDfs = ev.dfsSteps;
+      break;
+
+    // ---------- hopcroft-karp ----------
+    case "hk-warm":
+      state.phaseLabel = "warm-start"; state.match = ev.match.slice();
+      state.augEdges = new Set([ek(ev.u, ev.v)]); state.current = ev.u;
+      state.statsSize = ev.size; rebuildMatchLog(state);
+      break;
+    case "hk-bfs":
+      state.phaseLabel = "phase " + ev.phase; state.statsPhases = ev.phase;
+      break;
+    case "hk-augment":
+      state.match = ev.match.slice();
+      state.augEdges = augEdgeSet(state.g, ev.path);
+      state.statsSize = ev.size; state.statsAug = ev.augPaths; state.statsPhases = ev.phase;
+      rebuildMatchLog(state);
+      break;
+    case "hk-phase-end":
+      break;
+
+    // ---------- common ----------
+    case "match-done":
+      state.match = ev.match.slice();
+      state.statsSize = ev.size;
+      if (ev.augPaths !== undefined) state.statsAug = ev.augPaths;
+      if (ev.phases !== undefined) state.statsPhases = ev.phases;
+      if (ev.scanned !== undefined) state.statsScanned = ev.scanned;
+      if (ev.dfsSteps !== undefined) state.statsDfs = ev.dfsSteps;
+      rebuildMatchLog(state);
+      state.finished = true;
+      break;
+  }
+}
+
+// Recompute the matched-pair list from the current match array (stable order).
+function rebuildMatchLog(state) {
+  const log = [];
+  const m = state.match;
+  for (let i = 0; i < m.length; i++) {
+    if (m[i] !== -1 && state.g.nodes[i].side === 0) log.push({ a: i, b: m[i] });
+  }
+  state.matchLog = log;
+}
+
+function draw(state, canvas) {
+  if (!state.g) return;
+  ensureMatch(state);
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const padX = 46, padTop = 24, padBot = 24;
+  const xy = (nd) => ({ x: padX + nd.x * (w - 2 * padX), y: padTop + nd.y * (h - padTop - padBot) });
+
+  // ---- edges ----
+  for (const [u, v] of state.g.edges) {
+    const a = xy(state.g.nodes[u]), b = xy(state.g.nodes[v]);
+    const key = ek(u, v);
+    const matched = state.match[u] === v;
+    const onAug = state.augEdges.has(key);
+    const considering = state.considering === key;
+
+    let color = "var(--edge)", width = 1.5;
+    if (onAug) { color = "var(--edge-aug)"; width = 4; }
+    else if (matched) { color = "var(--edge-matched)"; width = 3.5; }
+    else if (considering) { color = "var(--edge-considered)"; width = 2.5; }
+    drawEdge(ctx, a, b, color, width);
+  }
+
+  // ---- nodes ----
+  for (const nd of state.g.nodes) {
+    const p = xy(nd);
+    const matched = state.match[nd.id] !== -1;
+    let fill = "var(--node-fill)";
+    let stroke = nd.side === 0 ? "var(--node-left)" : "var(--node-right)";
+    let sw = 2;
+    if (nd.id === state.current) { fill = "var(--node-active)"; sw = 2.8; }
+    else if (matched) { fill = "var(--node-matched)"; }
+    drawNode(ctx, p.x, p.y, nd, fill, stroke, sw);
+  }
+}
+
+function drawEdge(ctx, a, b, colorVar, width) {
+  const color = cssVarValue(colorVar);
+  ctx.save();
+  ctx.lineWidth = width;
+  ctx.strokeStyle = color;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const nx = dx / dist, ny = dy / dist;
+  ctx.beginPath();
+  ctx.moveTo(a.x + nx * NODE_RADIUS, a.y + ny * NODE_RADIUS);
+  ctx.lineTo(b.x - nx * NODE_RADIUS, b.y - ny * NODE_RADIUS);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawNode(ctx, x, y, node, fillVar, strokeVar, strokeWidth) {
+  const fill = cssVarValue(fillVar), stroke = cssVarValue(strokeVar);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, NODE_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = strokeWidth; ctx.strokeStyle = stroke; ctx.stroke();
+  const brightFill = fill !== cssVarValue("var(--node-fill)");
+  ctx.font = "600 12px -apple-system, 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = brightFill ? "#0c0f15" : "#e6e8ef";
+  ctx.fillText(node.label || String(node.id), x, y);
+  ctx.restore();
+}
+
+const _cssVarCache = {};
+function cssVarValue(v) {
+  if (!v.startsWith("var(")) return v;
+  const m = v.match(/var\(\s*(--[^,)\s]+)/);
+  if (!m) return "#888";
+  const name = m[1];
+  if (_cssVarCache[name]) return _cssVarCache[name];
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  _cssVarCache[name] = val;
+  return val;
+}
+
+// =======================================================================
+// UI wiring (dual-pane)
+// =======================================================================
+
+const ui = {
+  algoA: document.getElementById("algoA"), algoB: document.getElementById("algoB"),
+  example: document.getElementById("example"),
+  run: document.getElementById("run"), play: document.getElementById("play"),
+  pause: document.getElementById("pause"), step: document.getElementById("step"),
+  stepBack: document.getElementById("stepBack"), reset: document.getElementById("reset"),
+  speed: document.getElementById("speed"), speedLbl: document.getElementById("speedLbl"),
+  progress: document.getElementById("progress"),
+  paneA: document.getElementById("paneA"), paneB: document.getElementById("paneB"),
+  canvasA: document.getElementById("canvasA"), canvasB: document.getElementById("canvasB"),
+  A_h2: document.getElementById("A_h2"), B_h2: document.getElementById("B_h2"),
+  A_lbl0: document.getElementById("A_lbl0"), A_lbl1: document.getElementById("A_lbl1"),
+  A_lbl2: document.getElementById("A_lbl2"), A_lbl3: document.getElementById("A_lbl3"),
+  B_lbl0: document.getElementById("B_lbl0"), B_lbl1: document.getElementById("B_lbl1"),
+  B_lbl2: document.getElementById("B_lbl2"), B_lbl3: document.getElementById("B_lbl3"),
+  A_slot0: document.getElementById("A_slot0"), A_slot1: document.getElementById("A_slot1"),
+  A_slot2: document.getElementById("A_slot2"), A_slot3: document.getElementById("A_slot3"),
+  B_slot0: document.getElementById("B_slot0"), B_slot1: document.getElementById("B_slot1"),
+  B_slot2: document.getElementById("B_slot2"), B_slot3: document.getElementById("B_slot3"),
+  statusA: document.getElementById("statusA"), statusB: document.getElementById("statusB"),
+  eventInfoA: document.getElementById("eventInfoA"), eventInfoB: document.getElementById("eventInfoB"),
+  A_paths: document.getElementById("A_paths"), B_paths: document.getElementById("B_paths"),
+};
+
+const state = { paneA: paneState(), paneB: paneState(), playing: false, timer: null };
+
+function runAlgo(algo, g) {
+  if (algo === "greedy") return runGreedy(g);
+  if (algo === "kuhn") return runKuhn(g);
+  if (algo === "hk") return runHopcroftKarp(g);
+  throw new Error("unknown algo " + algo);
+}
+
+function populateExamples() {
+  const list = examplesForPair();
+  const prev = ui.example.value;
+  ui.example.innerHTML = "";
+  for (const key of list) {
+    const opt = document.createElement("option");
+    opt.value = key; opt.textContent = EXAMPLE_LABELS[key] || key;
+    ui.example.appendChild(opt);
+  }
+  if (list.includes(prev)) ui.example.value = prev;
+}
+
+function updateHeader(algo, side) {
+  const info = ALGO_INFO[algo];
+  const h2 = side === "A" ? ui.A_h2 : ui.B_h2;
+  h2.innerHTML = escapeHtml(info.h2) + ' <span class="badge">' + escapeHtml(info.badge) + '</span>';
+  const lbls = side === "A" ? [ui.A_lbl0, ui.A_lbl1, ui.A_lbl2, ui.A_lbl3]
+                            : [ui.B_lbl0, ui.B_lbl1, ui.B_lbl2, ui.B_lbl3];
+  for (let i = 0; i < 4; i++) lbls[i].textContent = info.slotLabels[i];
+}
+
+function slotsFor(s) {
+  if (s.algo === "greedy") {
+    const free = s.g ? s.g.nodes.length - 2 * s.statsSize : 0;
+    return [s.phaseLabel, s.statsSize, s.statsScanned, free];
+  }
+  if (s.algo === "kuhn") return [s.phaseLabel, s.statsSize, s.statsAug, s.statsDfs];
+  if (s.algo === "hk") return [s.phaseLabel, s.statsSize, s.statsPhases, s.statsAug];
+  return [s.phaseLabel, 0, 0, 0];
+}
+
+function updateSlots() {
+  const a = slotsFor(state.paneA);
+  ui.A_slot0.textContent = a[0]; ui.A_slot1.textContent = a[1]; ui.A_slot2.textContent = a[2]; ui.A_slot3.textContent = a[3];
+  const b = slotsFor(state.paneB);
+  ui.B_slot0.textContent = b[0]; ui.B_slot1.textContent = b[1]; ui.B_slot2.textContent = b[2]; ui.B_slot3.textContent = b[3];
+}
+
+function loadAndRun() {
+  const algoA = ui.algoA.value, algoB = ui.algoB.value, exKey = ui.example.value;
+  if (!exKey) return;
+  const specA = EXAMPLES[exKey](), specB = EXAMPLES[exKey]();
+
+  let evA, evB;
+  try { evA = runAlgo(algoA, specA).events; }
+  catch (e) { evA = [{ type: "match-done", match: Array(specA.nodes.length).fill(-1), size: 0, message: e.message }]; }
+  try { evB = runAlgo(algoB, specB).events; }
+  catch (e) { evB = [{ type: "match-done", match: Array(specB.nodes.length).fill(-1), size: 0, message: e.message }]; }
+
+  state.paneA = paneState();
+  state.paneA.g = specA; state.paneA.events = evA; state.paneA.algo = algoA; ensureMatch(state.paneA);
+  state.paneB = paneState();
+  state.paneB.g = specB; state.paneB.events = evB; state.paneB.algo = algoB; ensureMatch(state.paneB);
+
+  ui.paneA.classList.remove("done"); ui.paneB.classList.remove("done");
+  ui.statusA.textContent = specA.title + " — " + specA.hint;
+  ui.statusB.textContent = specB.title + " — " + specB.hint;
+  ui.eventInfoA.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evA.length + " events.";
+  ui.eventInfoB.innerHTML = "Press <b>Play</b> ▶ or <b>Step</b> ⏭ to advance through the " + evB.length + " events.";
+  ui.A_paths.innerHTML = ""; ui.B_paths.innerHTML = "";
+
+  updateHeader(algoA, "A"); updateHeader(algoB, "B");
+  updateSlots();
+  draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB);
+  setProgress();
+}
+
+function setProgress() {
+  const total = Math.max(state.paneA.events.length, state.paneB.events.length);
+  const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
+  ui.progress.textContent = "step " + cur + " / " + total;
+}
+
+function stepPane(s, infoEl, canvas, pathsEl, paneEl) {
+  if (s.iEvt >= s.events.length) return false;
+  const ev = s.events[s.iEvt];
+  applyEvent(s, ev); s.iEvt++;
+  infoEl.innerHTML = ev.message || "";
+  draw(s, canvas);
+  if (ev.type === "match-done") { renderResult(s, pathsEl); paneEl.classList.add("done"); }
+  return true;
+}
+
+function stepForward() {
+  let any = false;
+  if (state.paneA.iEvt < state.paneA.events.length)
+    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA) || any;
+  if (state.paneB.iEvt < state.paneB.events.length)
+    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB) || any;
+  updateSlots(); setProgress();
+  if (!any) pause();
+  return any;
+}
+
+function stepBackward() {
+  const target = Math.max(0, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1);
+  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.A_paths, ui.paneA);
+  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.B_paths, ui.paneB);
+  updateSlots(); setProgress();
+}
+
+function rebuildToStep(s, target, infoEl, canvas, pathsEl, paneEl) {
+  const g = s.g, evs = s.events, algo = s.algo;
+  const fresh = paneState();
+  fresh.g = g; fresh.events = evs; fresh.algo = algo; ensureMatch(fresh);
+  const limit = Math.min(target, evs.length);
+  for (let i = 0; i < limit; i++) applyEvent(fresh, evs[i]);
+  fresh.iEvt = limit;
+  for (const k in fresh) s[k] = fresh[k];
+  infoEl.innerHTML = limit === 0 ? "At step 0 — graph loaded, no events applied yet." : (evs[limit - 1].message || "");
+  paneEl.classList.toggle("done", s.finished);
+  draw(s, canvas);
+  if (s.finished) renderResult(s, pathsEl); else pathsEl.innerHTML = "";
+}
+
+function renderResult(s, pathsEl) {
+  pathsEl.innerHTML = "";
+  for (const p of s.matchLog) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="seq">${escapeHtml(lbl(s.g, p.a))} – ${escapeHtml(lbl(s.g, p.b))}</span>`;
+    pathsEl.appendChild(li);
+  }
+  const li = document.createElement("li");
+  li.style.listStyle = "none"; li.style.marginLeft = "-16px"; li.style.marginTop = "4px";
+  const maximal = s.algo === "greedy";
+  li.innerHTML = `<span class="${maximal ? "sub" : "total"}">${maximal ? "Maximal" : "Maximum"} matching size = ${s.statsSize}</span>`;
+  pathsEl.appendChild(li);
+}
+
+function play() {
+  if (state.playing) return;
+  state.playing = true;
+  ui.play.disabled = true; ui.pause.disabled = false;
+  const tick = () => {
+    if (!state.playing) return;
+    if (!stepForward()) { pause(); return; }
+    state.timer = setTimeout(tick, parseInt(ui.speed.value, 10));
+  };
+  tick();
+}
+
+function pause() {
+  state.playing = false;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = null;
+  ui.play.disabled = false; ui.pause.disabled = true;
+}
+
+function reset() { pause(); loadAndRun(); }
+
+ui.algoA.addEventListener("change", () => { populateExamples(); loadAndRun(); });
+ui.algoB.addEventListener("change", () => { populateExamples(); loadAndRun(); });
+ui.example.addEventListener("change", () => loadAndRun());
+ui.run.addEventListener("click", () => loadAndRun());
+ui.play.addEventListener("click", play);
+ui.pause.addEventListener("click", pause);
+ui.step.addEventListener("click", () => { pause(); stepForward(); });
+ui.stepBack.addEventListener("click", () => { pause(); stepBackward(); });
+ui.reset.addEventListener("click", reset);
+ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+window.addEventListener("resize", () => { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); });
+
+populateExamples();
+loadAndRun();
+</script>
+
+</body>
+</html>
