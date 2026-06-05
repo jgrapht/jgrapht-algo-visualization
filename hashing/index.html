@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weisfeiler-Lehman graph hash — JGraphT algorithm visualizations</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/x-icon" href="../favicon.ico">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1c2230;
+    --ink: #e6e8ef;
+    --muted: #8a93a6;
+    --accent: #6cb3ff;
+    --accent2: #8ee08e;
+    --warn: #f3c04a;
+    --bad: #f06f6f;
+    --edge: #434a5e;
+    --node-stroke: #6c7488;
+    --node-active: #f0884a;          /* vertex whose colour just changed */
+  }
+  html, body { background: var(--bg); color: var(--ink); margin: 0; font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  header {
+    padding: 8px 14px; border-bottom: 1px solid #232838;
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 6; background: var(--bg);
+  }
+  header h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  header h1 a { color: var(--muted); text-decoration: none; }
+  header h1 a:hover { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    padding: 6px 14px; background: var(--panel); border-bottom: 1px solid #232838;
+    font-size: 12px; position: sticky; top: 33px; z-index: 5;
+  }
+  .controls label { color: var(--muted); margin-left: 6px; }
+  .controls select, .controls button, .controls input[type=range] {
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid #2c3447; padding: 6px 10px; border-radius: 6px; font: inherit;
+  }
+  .controls button { cursor: pointer; }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button.primary { background: var(--accent); color: #0a0e16; border-color: var(--accent); font-weight: 600; }
+  .controls .spacer { flex: 1; }
+  .controls .transport {
+    display: inline-flex; gap: 0; align-items: stretch;
+    border: 1px solid #2c3447; border-radius: 8px; overflow: hidden; background: var(--panel-2);
+  }
+  .controls .transport button {
+    border: none; border-right: 1px solid #2c3447; border-radius: 0;
+    padding: 6px 12px; min-width: 36px; font-size: 14px; background: transparent; color: var(--ink);
+  }
+  .controls .transport button:last-child { border-right: none; }
+  .controls .transport button:disabled { color: #555a6a; cursor: default; }
+  .controls .transport button.primary { background: var(--accent); color: #0a0e16; }
+  .panes { display: grid; gap: 10px; padding: 10px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid #232838; border-radius: 10px; display: flex; flex-direction: column; }
+  .pane h2 {
+    margin: 0; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid #232838; display: flex; align-items: center; gap: 8px;
+  }
+  .pane h2 .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font-weight: 500; }
+  .pane .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-bottom: 1px solid #232838; }
+  .pane .stat {
+    padding: 5px 10px; border-right: 1px solid #232838;
+    display: flex; flex-direction: column; justify-content: space-between; min-height: 48px;
+  }
+  .pane .stat:last-child { border-right: none; }
+  .pane .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; min-height: 24px; }
+  .pane .stat .v { color: var(--ink); font-size: 16px; font-weight: 600; line-height: 1; }
+  .pane .stat .v.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .pane canvas { width: 100%; height: min(44vh, 380px); min-height: 240px; display: block; background: #0c0f15; }
+  .pane .status { padding: 4px 12px; font-size: 11px; color: var(--muted); border-top: 1px solid #232838; }
+  .pane .event-info {
+    padding: 7px 12px; color: #c0c6d6;
+    border-top: 1px solid #232838; background: #11151d;
+    min-height: 56px; max-height: 96px; overflow-y: auto;
+  }
+  .pane .event-info .line { font-size: 11.5px; line-height: 1.45; opacity: 0.42; margin: 1px 0; }
+  .pane .event-info .line.cur { font-size: 13.5px; line-height: 1.5; opacity: 1; color: #e6e8ef; font-weight: 500; }
+  .pane .event-info code { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .pane.done .event-info { background: #0f1f17; }
+  .controls #progress.done { color: var(--accent2); font-weight: 600; }
+  .controls input[type=range].scrub { width: 160px; accent-color: var(--accent); }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 14px;
+    background: var(--panel); border-top: 1px solid #232838; border-bottom: 1px solid #232838;
+    font-size: 11px; color: var(--muted);
+  }
+  .legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+  .verdict { padding: 10px; }
+  .verdict .box {
+    border: 1px solid #2c3447; border-radius: 10px; padding: 10px 14px; background: var(--panel);
+    display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: center;
+  }
+  .verdict .box.match { border-color: #2f5e3a; background: #0f1f17; }
+  .verdict .box.differ { border-color: #5e2f3a; background: #1f0f13; }
+  .verdict .fp { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .verdict .fp b { color: var(--ink); }
+  .verdict .tag { font-weight: 600; }
+  .verdict .tag.match { color: var(--accent2); }
+  .verdict .tag.differ { color: var(--bad); }
+  .verdict .note { color: var(--muted); flex-basis: 100%; font-size: 11.5px; }
+  details.explainer { margin: 10px; background: var(--panel); border: 1px solid #232838; border-radius: 10px; }
+  details.explainer > summary { cursor: pointer; padding: 8px 14px; font-size: 12px; color: var(--ink); font-weight: 600; list-style: none; }
+  details.explainer > summary::-webkit-details-marker { display: none; }
+  details.explainer > .body { padding: 0 14px 12px; font-size: 12px; color: #c0c6d6; line-height: 1.55; }
+  details.explainer .glossary { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 6px; }
+  details.explainer .card { background: var(--panel-2); border: 1px solid #2c3447; border-radius: 8px; padding: 8px 10px; font-size: 11px; }
+  details.explainer .card .term { color: var(--accent); font-weight: 600; margin-bottom: 3px; }
+  details.explainer .card .def { color: #c0c6d6; }
+  details.explainer code { background: #11151d; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="../index.html">JGraphT algorithm visualizations</a> &nbsp;›&nbsp; Weisfeiler-Lehman graph hash</h1>
+  <span class="sub">Colour-refinement rounds &amp; fingerprint stability — two graphs, hashed side by side</span>
+</header>
+
+<div class="controls">
+  <label for="example">Example pair</label>
+  <select id="example"></select>
+  <span class="transport">
+    <button id="run" class="primary" title="Load — build the graphs and the refinement stream">⏏</button>
+    <button id="stepBack" title="Previous round">⏮</button>
+    <button id="play" title="Play">▶</button>
+    <button id="pause" disabled title="Pause">❚❚</button>
+    <button id="step" title="Next round">⏭</button>
+    <button id="reset" title="Stop and reset to round 0">⏹</button>
+  </span>
+  <label for="speed">Speed</label>
+  <input id="speed" type="range" min="120" max="1600" value="640" step="20">
+  <span id="speedLbl" class="sub">640 ms/step</span>
+  <label for="scrub">Scrub</label>
+  <input id="scrub" class="scrub" type="range" min="0" max="0" value="0" title="Drag to scrub through rounds">
+  <span class="spacer"></span>
+  <span id="progress" class="sub">round 0 / 0</span>
+</div>
+<div class="sr-hint" style="padding:2px 14px;font-size:11px;color:var(--muted);background:var(--panel);border-bottom:1px solid #232838">
+  Keys: <b>Space</b> play/pause · <b>←</b>/<b>→</b> step · drag <b>Scrub</b> to jump. Node colour = WL colour class; <b>identical colours across panes mean identical colour multisets</b>.
+</div>
+
+<div class="panes" id="panes">
+  <div class="pane" id="paneA">
+    <h2 id="A_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">round</div><div class="v" id="A_slot0">0</div></div>
+      <div class="stat"><div class="k">colour classes</div><div class="v" id="A_slot1">0</div></div>
+      <div class="stat"><div class="k">round signature</div><div class="v mono" id="A_slot2">—</div></div>
+      <div class="stat"><div class="k">fingerprint</div><div class="v mono" id="A_slot3">—</div></div>
+    </div>
+    <canvas id="canvasA"></canvas>
+    <div class="status" id="statusA">Ready.</div>
+    <div class="event-info" id="eventInfoA">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+
+  <div class="pane" id="paneB">
+    <h2 id="B_h2">—</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">round</div><div class="v" id="B_slot0">0</div></div>
+      <div class="stat"><div class="k">colour classes</div><div class="v" id="B_slot1">0</div></div>
+      <div class="stat"><div class="k">round signature</div><div class="v mono" id="B_slot2">—</div></div>
+      <div class="stat"><div class="k">fingerprint</div><div class="v mono" id="B_slot3">—</div></div>
+    </div>
+    <canvas id="canvasB"></canvas>
+    <div class="status" id="statusB">Ready.</div>
+    <div class="event-info" id="eventInfoB">Pick an example above, then press <b>Play</b>.</div>
+  </div>
+</div>
+
+<div class="verdict" id="verdict">
+  <div class="box" id="verdictBox">
+    <span class="tag" id="verdictTag">—</span>
+    <span class="fp">A: <b id="fpA">—</b></span>
+    <span class="fp">B: <b id="fpB">—</b></span>
+    <span class="note" id="verdictNote">Run an example to the end to compare the two graph hashes.</span>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="sw" style="background:var(--node-active);border-radius:50%"></span>vertex whose colour just changed this round</span>
+  <span style="color:var(--muted)">node fill = WL colour class · the same colour in both panes = the same canonical class</span>
+</div>
+
+<details class="explainer" id="glossaryWrap" open>
+  <summary>Glossary — colour refinement, the WL hash, and its blind spot</summary>
+  <div class="body glossary">
+    <div class="card"><div class="term">Colour refinement (1-WL)</div><div class="def">Start by colouring every vertex with its degree. Each round, recolour a vertex by hashing <em>its</em> colour together with the sorted multiset of its neighbours' colours. Two vertices keep the same colour only while they look identical out to a growing radius. This is exactly <code>org.jgrapht.alg.color.ColorRefinementAlgorithm</code>.</div></div>
+    <div class="card"><div class="term">Colour class</div><div class="def">A set of vertices sharing the current colour. The partition only ever gets finer; when a round adds no new classes it is <em>stable</em> and refinement stops.</div></div>
+    <div class="card"><div class="term">Round signature</div><div class="def">A hash of the sorted histogram <em>{colour: count}</em> of one round. It ignores vertex identity and ordering, so isomorphic graphs produce the same signature every round.</div></div>
+    <div class="card"><div class="term">Graph hash (fingerprint)</div><div class="def"><code>WeisfeilerLehmanGraphHash.getHash()</code> folds the signatures of the initial degree round and every refinement round into one short digest — the value shown in the <em>fingerprint</em> stat and the verdict bar.</div></div>
+    <div class="card"><div class="term">Necessary, not sufficient</div><div class="def">Different fingerprints <em>prove</em> two graphs are non-isomorphic. Equal fingerprints do <em>not</em> prove isomorphism: 1-WL cannot separate some non-isomorphic graphs. Great as a fast pre-filter or content key, not a decision procedure.</div></div>
+    <div class="card"><div class="term">The blind spot</div><div class="def">A single 6-cycle and two disjoint triangles are both 2-regular, so colour refinement never splits them — identical fingerprints for non-isomorphic graphs. The <em>1-WL blind spot</em> example shows exactly this collision.</div></div>
+  </div>
+</details>
+
+<details class="explainer" id="narrativeWrap">
+  <summary>What you're watching — fingerprinting two graphs at once</summary>
+  <div class="body">
+    <p>
+      Both panes run the same 1-WL colour refinement that backs
+      <code>org.jgrapht.alg.hash.WeisfeilerLehmanGraphHash</code>. Colours are
+      <b>canonical and shared across the panes</b>: if a class in pane A is drawn the
+      same colour as a class in pane B, the two graphs have an identical colour at that
+      point. When the colour <em>multisets</em> agree every round, the fingerprints agree.
+    </p>
+    <ul>
+      <li><b>Isomorphic pair</b> — the same graph, relabelled and its vertices/edges added
+        in a scrambled order. The fingerprints are equal at every round: the hash is
+        invariant under relabelling and insertion order.</li>
+      <li><b>1-WL blind spot</b> — hexagon vs. two triangles. Both stay one colour class
+        forever, so the fingerprints <em>match</em> even though the graphs are not
+        isomorphic. This is the necessary-but-not-sufficient caveat, made visible.</li>
+      <li><b>Distinguished pair</b> — two forests with the same degree sequence that
+        refinement <em>does</em> tell apart: the colour multisets diverge in round 1 and
+        the fingerprints differ.</li>
+    </ul>
+    <p>
+      The verdict bar under the panes compares the final graph hashes — the same string
+      <code>getHash()</code> returns in Java.
+    </p>
+  </div>
+</details>
+
+<script>
+"use strict";
+
+// =======================================================================
+// Canonical string hash (cyrb53) -> short hex, used both for vertex colours
+// and for the round/graph fingerprints. Deterministic and order-free given
+// canonical inputs, mirroring WeisfeilerLehmanGraphHash on the Java side.
+// =======================================================================
+function cyrb53(str, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hex = (n) => (n >>> 0).toString(16).padStart(8, "0");
+  return hex(h2) + hex(h1);
+}
+function shortHash(s) { return cyrb53(s).slice(0, 12); }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
+}
+
+// =======================================================================
+// Layout helpers — normalised 0..1 coordinates.
+// =======================================================================
+function ring(ids, cx, cy, r, startAng = -Math.PI / 2) {
+  const k = ids.length;
+  return ids.map((id, j) => {
+    const a = startAng + j * 2 * Math.PI / k;
+    return { id, x: cx + (k <= 1 ? 0 : r) * Math.cos(a), y: cy + (k <= 1 ? 0 : r) * Math.sin(a), label: String(id) };
+  });
+}
+function row(ids, y, x0 = 0.12, x1 = 0.88) {
+  const k = ids.length;
+  return ids.map((id, j) => ({ id, x: k === 1 ? 0.5 : x0 + (x1 - x0) * j / (k - 1), y, label: String(id) }));
+}
+function byId(nodes) {
+  const out = [];
+  nodes.forEach(n => { out[n.id] = n; });
+  return out;
+}
+function clique(ids) {
+  const e = [];
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) e.push([ids[i], ids[j]]);
+  return e;
+}
+function pathEdges(ids) {
+  const e = [];
+  for (let i = 0; i + 1 < ids.length; i++) e.push([ids[i], ids[i + 1]]);
+  return e;
+}
+
+// =======================================================================
+// Example pairs. Each side: { title, nodes: [{id,x,y,label}], edges: [[u,v]] }.
+// =======================================================================
+const EXAMPLES = {
+  isomorphic: () => ({
+    title: "Isomorphic pair (same graph, relabelled)",
+    hint: "Equal fingerprints every round — invariant under relabelling and insertion order.",
+    A: {
+      title: "Graph A",
+      nodes: byId([...ring([0, 1, 2, 3, 4], 0.42, 0.5, 0.30), { id: 5, x: 0.80, y: 0.5, label: "5" }]),
+      edges: [...pathEdges([0, 1, 2, 3, 4]), [4, 0], [2, 5]],
+    },
+    B: {
+      // relabel 0->3,1->5,2->0,3->2,4->4,5->1 of the same structure (C5 with a pendant on the C5)
+      title: "Graph B (relabelled)",
+      nodes: byId([...ring([3, 5, 0, 2, 4], 0.42, 0.5, 0.30), { id: 1, x: 0.80, y: 0.5, label: "1" }]),
+      edges: [[2, 4], [3, 5], [0, 2], [5, 0], [4, 3], [0, 1]],
+    },
+  }),
+
+  blindspot: () => ({
+    title: "1-WL blind spot (hexagon vs. two triangles)",
+    hint: "Both are 2-regular — refinement never splits them, so the fingerprints MATCH though the graphs are not isomorphic.",
+    A: {
+      title: "Hexagon C₆",
+      nodes: byId(ring([0, 1, 2, 3, 4, 5], 0.5, 0.5, 0.34)),
+      edges: [...pathEdges([0, 1, 2, 3, 4, 5]), [5, 0]],
+    },
+    B: {
+      title: "Two triangles 2·C₃",
+      nodes: byId([...ring([0, 1, 2], 0.30, 0.5, 0.18), ...ring([3, 4, 5], 0.72, 0.5, 0.18)]),
+      edges: [...clique([0, 1, 2]), ...clique([3, 4, 5])],
+    },
+  }),
+
+  distinguished: () => ({
+    title: "Distinguished pair (same degree sequence)",
+    hint: "Both forests have degrees {1,1,1,1,2,2}, but refinement separates them: fingerprints differ from round 1.",
+    A: {
+      title: "P₄ ⊔ edge",
+      nodes: byId([...row([0, 1, 2, 3], 0.36), ...row([4, 5], 0.7, 0.25, 0.75)]),
+      edges: [...pathEdges([0, 1, 2, 3]), [4, 5]],
+    },
+    B: {
+      title: "Two paths P₃",
+      nodes: byId([...row([0, 1, 2], 0.36, 0.1, 0.45), ...row([3, 4, 5], 0.36, 0.55, 0.9)]),
+      edges: [...pathEdges([0, 1, 2]), ...pathEdges([3, 4, 5])],
+    },
+  }),
+};
+const EXAMPLE_ORDER = ["isomorphic", "blindspot", "distinguished"];
+const EXAMPLE_LABELS = {
+  isomorphic: "Isomorphic pair (equal hash)",
+  blindspot: "1-WL blind spot (equal hash, not isomorphic)",
+  distinguished: "Distinguished pair (different hash)",
+};
+
+// =======================================================================
+// 1-WL refinement — JS mirror of WeisfeilerLehmanGraphHash (undirected,
+// degree-initialised). Emits one event per round, plus a final "done".
+//
+// Canonical labels are strings; identical labels across the two graphs are
+// the same colour class, so colours can be shared between panes and the
+// per-round histograms are directly comparable.
+// =======================================================================
+function runWL(g, maxRounds = 12) {
+  const ids = g.nodes.map(n => n.id);
+  const adj = {};
+  ids.forEach(i => { adj[i] = []; });
+  for (const [u, v] of g.edges) { adj[u].push(v); adj[v].push(u); }
+
+  // round 0: degree labels
+  let labels = {};
+  ids.forEach(i => { labels[i] = "d" + adj[i].length; });
+
+  const events = [];
+  const fpParts = [];
+
+  function histogram(round, lab) {
+    const counts = {};
+    ids.forEach(i => { counts[lab[i]] = (counts[lab[i]] || 0) + 1; });
+    const keys = Object.keys(counts).sort();
+    const ser = "R" + round + "{" + keys.map(k => k + ":" + counts[k]).join(",") + "}";
+    return { ser, classes: keys.length };
+  }
+  function classesOf(lab) { return new Set(ids.map(i => lab[i])).size; }
+
+  let h0 = histogram(0, labels);
+  fpParts.push(h0.ser);
+  events.push({
+    round: 0, labels: { ...labels }, changed: [],
+    classes: h0.classes, roundSig: shortHash(h0.ser), fingerprint: shortHash(fpParts.join("|")),
+    message: `Round 0 — colour every vertex by its degree. <b>${h0.classes}</b> colour class${h0.classes === 1 ? "" : "es"}.`,
+  });
+
+  let prevClasses = h0.classes;
+  for (let round = 1; round <= maxRounds; round++) {
+    const next = {};
+    const changed = [];
+    for (const i of ids) {
+      const neigh = adj[i].map(j => labels[j]).sort();
+      const sig = labels[i] + "|" + neigh.join(",");
+      next[i] = "h" + shortHash(sig);
+      if (next[i] !== labels[i]) changed.push(i);
+    }
+    const classes = classesOf(next);
+    const h = histogram(round, next);
+    fpParts.push(h.ser);
+    labels = next;
+    events.push({
+      round, labels: { ...labels }, changed,
+      classes, roundSig: shortHash(h.ser), fingerprint: shortHash(fpParts.join("|")),
+      message: classes > prevClasses
+        ? `Round ${round} — recolour by (own colour + sorted neighbour colours). Partition refined to <b>${classes}</b> classes.`
+        : `Round ${round} — recolour by (own colour + sorted neighbour colours). Partition is <b>stable</b> at ${classes} classes.`,
+    });
+    if (classes === prevClasses) break; // stable: refinement reached a fixpoint
+    prevClasses = classes;
+  }
+
+  const finalFp = shortHash(fpParts.join("|"));
+  events.push({
+    round: events[events.length - 1].round, labels: { ...labels }, changed: [], done: true,
+    classes: classesOf(labels), roundSig: events[events.length - 1].roundSig, fingerprint: finalFp,
+    graphHash: finalFp,
+    message: `Stable — graph hash = <code>${finalFp}</code> (${classesOf(labels)} colour classes).`,
+  });
+  return { events, graphHash: finalFp };
+}
+
+// =======================================================================
+// Colours — a GLOBAL canonical-label -> palette map shared across panes so
+// identical colour classes render identically in both graphs.
+// =======================================================================
+const PALETTE = [
+  "#6cb3ff", "#8ee08e", "#f3c04a", "#e0708e", "#c89bf0",
+  "#5fc2c9", "#f0a35e", "#9fd356", "#7aa2f7", "#d65f8a", "#b08cf0",
+  "#e6c84a", "#74d6b4", "#f08a8a", "#9aa6ff", "#5ad1a0",
+];
+let globalColorIndex = {};
+let nextColor = 0;
+function colorOfLabel(label) {
+  if (globalColorIndex[label] === undefined) globalColorIndex[label] = nextColor++;
+  return PALETTE[globalColorIndex[label] % PALETTE.length];
+}
+
+// =======================================================================
+// Renderer
+// =======================================================================
+const NODE_RADIUS = 15;
+const _cssVarCache = {};
+function cssVarValue(v) {
+  if (!v.startsWith("var(")) return v;
+  const m = v.match(/var\(\s*(--[^,)\s]+)/);
+  if (!m) return "#888";
+  const name = m[1];
+  if (_cssVarCache[name]) return _cssVarCache[name];
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
+  _cssVarCache[name] = val;
+  return val;
+}
+
+function paneState() {
+  return { g: null, events: [], iEvt: 0, labels: null, changed: new Set(), finished: false, graphHash: null };
+}
+
+function applyEvent(s, ev) {
+  s.labels = ev.labels;
+  s.changed = new Set(ev.changed || []);
+  if (ev.done) { s.finished = true; s.graphHash = ev.graphHash; }
+}
+
+function draw(s, canvas) {
+  if (!s.g) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const padX = 36, padTop = 26, padBot = 22;
+  const xy = (nd) => ({ x: padX + nd.x * (w - 2 * padX), y: padTop + nd.y * (h - padTop - padBot) });
+  const labels = s.labels || {};
+
+  // edges
+  ctx.strokeStyle = cssVarValue("var(--edge)");
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.7;
+  for (const [u, v] of s.g.edges) {
+    const a = xy(s.g.nodes[u]), b = xy(s.g.nodes[v]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // nodes
+  for (const nd of s.g.nodes) {
+    if (!nd) continue;
+    const p = xy(nd);
+    const moving = s.changed.has(nd.id);
+    const fill = labels[nd.id] !== undefined ? colorOfLabel(labels[nd.id]) : "#2a3142";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, moving ? NODE_RADIUS + 2 : NODE_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = moving ? 3 : 1.5;
+    ctx.strokeStyle = moving ? cssVarValue("var(--node-active)") : "#0c0f15";
+    ctx.stroke();
+    ctx.fillStyle = "#0c0f15";
+    ctx.font = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(nd.label || String(nd.id), p.x, p.y);
+  }
+}
+
+// =======================================================================
+// UI wiring (dual-pane)
+// =======================================================================
+const ui = {
+  example: document.getElementById("example"),
+  run: document.getElementById("run"), play: document.getElementById("play"),
+  pause: document.getElementById("pause"), step: document.getElementById("step"),
+  stepBack: document.getElementById("stepBack"), reset: document.getElementById("reset"),
+  speed: document.getElementById("speed"), speedLbl: document.getElementById("speedLbl"),
+  scrub: document.getElementById("scrub"), progress: document.getElementById("progress"),
+  paneA: document.getElementById("paneA"), paneB: document.getElementById("paneB"),
+  canvasA: document.getElementById("canvasA"), canvasB: document.getElementById("canvasB"),
+  A_h2: document.getElementById("A_h2"), B_h2: document.getElementById("B_h2"),
+  A_slot0: document.getElementById("A_slot0"), A_slot1: document.getElementById("A_slot1"),
+  A_slot2: document.getElementById("A_slot2"), A_slot3: document.getElementById("A_slot3"),
+  B_slot0: document.getElementById("B_slot0"), B_slot1: document.getElementById("B_slot1"),
+  B_slot2: document.getElementById("B_slot2"), B_slot3: document.getElementById("B_slot3"),
+  statusA: document.getElementById("statusA"), statusB: document.getElementById("statusB"),
+  eventInfoA: document.getElementById("eventInfoA"), eventInfoB: document.getElementById("eventInfoB"),
+  verdictBox: document.getElementById("verdictBox"), verdictTag: document.getElementById("verdictTag"),
+  fpA: document.getElementById("fpA"), fpB: document.getElementById("fpB"), verdictNote: document.getElementById("verdictNote"),
+};
+
+const state = { paneA: paneState(), paneB: paneState(), playing: false, timer: null, hashA: null, hashB: null };
+
+function populateExamples() {
+  ui.example.innerHTML = "";
+  for (const key of EXAMPLE_ORDER) {
+    const opt = document.createElement("option");
+    opt.value = key; opt.textContent = EXAMPLE_LABELS[key] || key;
+    ui.example.appendChild(opt);
+  }
+}
+
+function curEvent(s) { return s.events[Math.max(0, Math.min(s.iEvt, s.events.length) - 1)] || null; }
+
+function slot(s, side) {
+  const ev = curEvent(s);
+  const ids = ["_slot0", "_slot1", "_slot2", "_slot3"].map(k => ui[side + k]);
+  if (!ev) { ids.forEach(e => e.textContent = "—"); return; }
+  ids[0].textContent = ev.round;
+  ids[1].textContent = ev.classes;
+  ids[2].textContent = ev.roundSig;
+  ids[3].textContent = ev.fingerprint;
+}
+function updateSlots() { slot(state.paneA, "A"); slot(state.paneB, "B"); }
+
+function loadAndRun() {
+  const exKey = ui.example.value;
+  if (!exKey) return;
+  const spec = EXAMPLES[exKey]();
+  // reset shared colour map so each example colours from a clean palette
+  globalColorIndex = {}; nextColor = 0;
+
+  const resA = runWL(spec.A), resB = runWL(spec.B);
+  state.paneA = paneState();
+  state.paneA.g = spec.A; state.paneA.events = resA.events;
+  state.paneB = paneState();
+  state.paneB.g = spec.B; state.paneB.events = resB.events;
+  state.hashA = resA.graphHash; state.hashB = resB.graphHash;
+
+  ui.A_h2.innerHTML = escapeHtml(spec.A.title) + ' <span class="badge">1-WL refinement</span>';
+  ui.B_h2.innerHTML = escapeHtml(spec.B.title) + ' <span class="badge">1-WL refinement</span>';
+  ui.paneA.classList.remove("done"); ui.paneB.classList.remove("done");
+  ui.statusA.textContent = spec.title + " — " + spec.hint;
+  ui.statusB.textContent = spec.title + " — " + spec.hint;
+
+  // start at round 0 (apply first event so colours show immediately)
+  applyEvent(state.paneA, state.paneA.events[0]); state.paneA.iEvt = 1;
+  applyEvent(state.paneB, state.paneB.events[0]); state.paneB.iEvt = 1;
+
+  renderNarration(ui.eventInfoA, state.paneA);
+  renderNarration(ui.eventInfoB, state.paneB);
+  resetVerdict();
+  updateSlots();
+  draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB);
+  setProgress();
+}
+
+function renderNarration(infoEl, s) {
+  const K = 4, end = s.iEvt, start = Math.max(0, end - K);
+  if (end === 0) { infoEl.innerHTML = '<div class="line cur">Round 0 — loaded. Press Play or Step.</div>'; return; }
+  let html = "";
+  for (let i = start; i < end; i++)
+    html += '<div class="line' + (i === end - 1 ? ' cur' : '') + '">' + (s.events[i].message || "") + '</div>';
+  infoEl.innerHTML = html;
+  infoEl.scrollTop = infoEl.scrollHeight;
+}
+
+function resetVerdict() {
+  ui.verdictBox.className = "box";
+  ui.verdictTag.className = "tag"; ui.verdictTag.textContent = "—";
+  ui.fpA.textContent = "—"; ui.fpB.textContent = "—";
+  ui.verdictNote.textContent = "Run an example to the end to compare the two graph hashes.";
+}
+
+function maybeVerdict() {
+  if (!(state.paneA.finished && state.paneB.finished)) return;
+  const match = state.hashA === state.hashB;
+  ui.fpA.textContent = state.hashA; ui.fpB.textContent = state.hashB;
+  ui.verdictBox.className = "box " + (match ? "match" : "differ");
+  ui.verdictTag.className = "tag " + (match ? "match" : "differ");
+  ui.verdictTag.textContent = match ? "✓ hashes match" : "✗ hashes differ";
+  ui.verdictNote.textContent = match
+    ? "Equal hashes ⇒ the graphs may be isomorphic (necessary, not sufficient — see the blind-spot example)."
+    : "Different hashes ⇒ the graphs are provably NOT isomorphic.";
+}
+
+function setProgress() {
+  const total = Math.max(state.paneA.events.length, state.paneB.events.length);
+  const cur = Math.max(state.paneA.iEvt, state.paneB.iEvt);
+  const done = state.paneA.iEvt >= state.paneA.events.length && state.paneB.iEvt >= state.paneB.events.length;
+  ui.progress.textContent = (done ? "✓ done · " : "") + "round " + (cur - 1) + " / " + (total - 1);
+  ui.progress.classList.toggle("done", done);
+  ui.scrub.max = total; ui.scrub.value = cur;
+}
+
+function stepPane(s, infoEl, canvas, paneEl) {
+  if (s.iEvt >= s.events.length) return false;
+  const ev = s.events[s.iEvt];
+  applyEvent(s, ev); s.iEvt++;
+  renderNarration(infoEl, s);
+  draw(s, canvas);
+  if (ev.done) paneEl.classList.add("done");
+  return true;
+}
+
+function stepForward() {
+  let any = false;
+  if (state.paneA.iEvt < state.paneA.events.length)
+    any = stepPane(state.paneA, ui.eventInfoA, ui.canvasA, ui.paneA) || any;
+  if (state.paneB.iEvt < state.paneB.events.length)
+    any = stepPane(state.paneB, ui.eventInfoB, ui.canvasB, ui.paneB) || any;
+  updateSlots(); setProgress(); maybeVerdict();
+  if (!any) pause();
+  return any;
+}
+
+function stepBackward() { seekTo(Math.max(1, Math.max(state.paneA.iEvt, state.paneB.iEvt) - 1)); }
+
+function seekTo(target) {
+  rebuildToStep(state.paneA, target, ui.eventInfoA, ui.canvasA, ui.paneA);
+  rebuildToStep(state.paneB, target, ui.eventInfoB, ui.canvasB, ui.paneB);
+  updateSlots(); setProgress();
+  if (state.paneA.finished && state.paneB.finished) maybeVerdict(); else resetVerdict();
+}
+
+function rebuildToStep(s, target, infoEl, canvas, paneEl) {
+  const fresh = paneState();
+  fresh.g = s.g; fresh.events = s.events;
+  const limit = Math.min(Math.max(target, 1), s.events.length);
+  for (let i = 0; i < limit; i++) applyEvent(fresh, s.events[i]);
+  fresh.iEvt = limit;
+  for (const k in fresh) s[k] = fresh[k];
+  renderNarration(infoEl, s);
+  paneEl.classList.toggle("done", s.finished);
+  draw(s, canvas);
+}
+
+function play() {
+  if (state.playing) return;
+  state.playing = true;
+  ui.play.disabled = true; ui.pause.disabled = false;
+  const tick = () => {
+    if (!state.playing) return;
+    if (!stepForward()) { pause(); return; }
+    state.timer = setTimeout(tick, parseInt(ui.speed.value, 10));
+  };
+  tick();
+}
+
+function pause() {
+  state.playing = false;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = null;
+  ui.play.disabled = false; ui.pause.disabled = true;
+}
+
+function reset() { pause(); loadAndRun(); }
+
+ui.example.addEventListener("change", () => loadAndRun());
+ui.run.addEventListener("click", () => loadAndRun());
+ui.play.addEventListener("click", play);
+ui.pause.addEventListener("click", pause);
+ui.step.addEventListener("click", () => { pause(); stepForward(); });
+ui.stepBack.addEventListener("click", () => { pause(); stepBackward(); });
+ui.reset.addEventListener("click", reset);
+ui.speed.addEventListener("input", () => { ui.speedLbl.textContent = ui.speed.value + " ms/step"; });
+ui.scrub.addEventListener("input", () => { pause(); seekTo(parseInt(ui.scrub.value, 10)); });
+window.addEventListener("resize", () => { draw(state.paneA, ui.canvasA); draw(state.paneB, ui.canvasB); });
+
+window.addEventListener("keydown", (e) => {
+  const t = (e.target.tagName || "").toUpperCase();
+  if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+  if (e.code === "Space") { e.preventDefault(); state.playing ? pause() : play(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); pause(); stepForward(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); pause(); stepBackward(); }
+});
+
+populateExamples();
+loadAndRun();
+</script>
+
+</body>
+</html>

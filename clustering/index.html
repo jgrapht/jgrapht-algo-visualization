@@ -118,19 +118,21 @@
 
 <header>
   <h1><a href="../index.html">JGraphT algorithm visualizations</a> &nbsp;›&nbsp; Community detection</h1>
-  <span class="sub">Louvain modularity optimisation — local moving vs. the full multilevel algorithm</span>
+  <span class="sub">Louvain modularity optimisation vs. Leiden — refinement &amp; the well-connected-community guarantee</span>
 </header>
 
 <div class="controls">
   <label for="algoA">A</label>
   <select id="algoA">
-    <option value="local" selected>Louvain — local moving (1 level)</option>
-    <option value="multi">Louvain — multilevel (+ aggregation)</option>
+    <option value="local">Louvain — local moving (1 level)</option>
+    <option value="multi" selected>Louvain — multilevel (+ aggregation)</option>
+    <option value="leiden">Leiden — refinement + connected communities</option>
   </select>
   <label for="algoB">B</label>
   <select id="algoB">
     <option value="local">Louvain — local moving (1 level)</option>
-    <option value="multi" selected>Louvain — multilevel (+ aggregation)</option>
+    <option value="multi">Louvain — multilevel (+ aggregation)</option>
+    <option value="leiden" selected>Leiden — refinement + connected communities</option>
   </select>
   <label for="example">Example</label>
   <select id="example"></select>
@@ -197,7 +199,7 @@
 </div>
 
 <details class="explainer" id="glossaryWrap" open>
-  <summary>Glossary — modularity, local moving, aggregation, resolution limit</summary>
+  <summary>Glossary — modularity, local moving, aggregation, refinement, connectivity</summary>
   <div class="body glossary">
     <div class="card"><div class="term">Community / cluster</div><div class="def">A group of vertices the algorithm keeps together — denser links inside than across. Shown by colour; each connected blob of one colour is a community.</div></div>
     <div class="card"><div class="term">Modularity Q</div><div class="def">How many edges fall inside communities versus what you'd expect by chance: <code>Q = Σ_c [ 2·e<sub>in</sub>(c)/2m − (Σ<sub>tot</sub>(c)/2m)² ]</code>. Higher is better; maximising it is NP-hard. The stat panel tracks Q as it climbs.</div></div>
@@ -208,36 +210,45 @@
     <div class="card"><div class="term">Σ<sub>tot</sub></div><div class="def">Total weighted degree of all vertices currently in a community — the term that penalises large communities in the modularity gain.</div></div>
     <div class="card"><div class="term">2m</div><div class="def">Twice the number of edges (the sum of all degrees). JGraphT's <code>LouvainClustering</code> uses the same <code>2m</code> / self-loop conventions as <code>UndirectedModularityMeasurer</code>, so <code>getModularity()</code> agrees exactly.</div></div>
     <div class="card"><div class="term">Resolution limit</div><div class="def">Modularity can fail to separate very small communities, sometimes merging them — a known limitation Louvain inherits, and a motivation for newer methods (Leiden, etc.).</div></div>
+    <div class="card"><div class="term">Refinement (Leiden)</div><div class="def">The phase Leiden inserts between local moving and aggregation. Inside each community it restarts from singletons and merges nodes <em>only along edges</em> with positive gain, so every refined sub-community is <em>connected</em>. Aggregation then contracts these sub-communities rather than whole communities — which lets Leiden escape the local optimum Louvain's aggregation locks in. Watch the <code>refine</code> step recolour a community into its sub-communities.</div></div>
+    <div class="card"><div class="term">Well-connected guarantee</div><div class="def">Louvain can report a community that is internally <em>disconnected</em>: a vertex that once linked two halves can later move away, and Louvain never revisits it. Leiden's <code>JGraphT</code> implementation ends with a connected-components split of every reported community — splitting a disconnected community only raises modularity, so the guarantee is free. The <code>verify</code> step is where it runs.</div></div>
+    <div class="card"><div class="term">Leiden vs Louvain</div><div class="def">Same modularity objective and local-moving core. Leiden adds refinement + the connectivity split: it never returns a broken community and, by aggregating refined sub-communities, often reaches an equal-or-higher Q. From Traag, Waltman &amp; van&nbsp;Eck (2019), <em>“From Louvain to Leiden: guaranteeing well-connected communities.”</em></div></div>
   </div>
 </details>
 
 <details class="explainer" id="narrativeWrap">
-  <summary>What you're watching — Louvain community detection</summary>
+  <summary>What you're watching — Louvain vs Leiden community detection</summary>
   <div class="body">
-    <h3 style="margin-top:0">Pick either mode in each pane</h3>
+    <h3 style="margin-top:0">Pick any mode in each pane</h3>
     <p>
-      Two views of JGraphT's <code>org.jgrapht.alg.clustering.LouvainClustering</code>
-      run on the same graph:
+      Three views of JGraphT's clustering algorithms, run on the same graph:
     </p>
     <ul>
-      <li><b>Local moving (1 level)</b> — only the greedy local-moving phase on the
-        original graph. Fast, and often enough, but it stops at the first stable
+      <li><b>Louvain — local moving (1 level)</b> — only the greedy local-moving phase
+        on the original graph. Fast, often enough, but it stops at the first stable
         partition.</li>
-      <li><b>Multilevel (+ aggregation)</b> — the full algorithm: after local moving
+      <li><b>Louvain — multilevel (+ aggregation)</b> —
+        <code>org.jgrapht.alg.clustering.LouvainClustering</code>: after local moving
         settles, communities are contracted into super-vertices and local moving runs
         again, level after level, until nothing improves.</li>
+      <li><b>Leiden</b> —
+        <code>org.jgrapht.alg.clustering.LeidenClustering</code>: the same local-moving
+        core, plus a <em>refinement</em> phase (each community is re-grown along edges
+        into connected sub-communities, which are what aggregation contracts) and a
+        final <em>connectivity check</em> that splits any disconnected community.</li>
     </ul>
     <p>
-      <b>The punchline:</b> on well-separated graphs both reach the same partition (the
-      <em>planted</em> example), so aggregation is "free" insurance. But on a
-      <em>hierarchical</em> graph, local moving alone gets stuck at the fine clusters
-      while the multilevel run aggregates them into coarser communities of strictly
-      higher modularity. Compare the <em>communities</em> and <em>Q</em> stats.
+      <b>The punchline:</b> on a <em>hierarchical</em> graph, local moving alone stops at
+      the fine clusters while multilevel aggregates them into coarser communities of
+      higher Q. On the <em>refinement</em> example, Louvain's greedy moves strand a
+      vertex and split a triangle across two communities; Leiden's refinement keeps
+      sub-communities connected and recovers the tidier, higher-Q partition. And unlike
+      Louvain, Leiden <em>never</em> returns an internally disconnected community — the
+      <code>verify</code> step certifies it. Compare the <em>phase</em>,
+      <em>communities</em> and <em>Q</em> stats.
     </p>
     <p>
-      This page is built for comparison: more community-detection algorithms can be
-      added as extra options in the A / B selectors. The two panes run independently;
-      total progress is the slower pane's step count.
+      The two panes run independently; total progress is the slower pane's step count.
     </p>
   </div>
 </details>
@@ -307,10 +318,23 @@ const EXAMPLES = {
     ],
     hint: "Four cliques in two tightly-coupled pairs. Local moving stops at 4; multilevel aggregates to 2 (higher Q).",
   }),
+
+  refine: () => ({
+    title: "Refinement recovers a cleaner cut (Louvain vs Leiden)",
+    nodes: layoutGroups([[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]),
+    edges: [
+      ...clique([0, 1, 2]), ...clique([3, 4, 5]),
+      ...clique([6, 7, 8]), ...clique([9, 10, 11]),
+      [3, 0], [0, 6], [6, 3], [3, 7],              // hub links between the first three triangles
+      [2, 4], [4, 1],                              // edges that lure vertex 4 away from its triangle
+    ],
+    hint: "Louvain's greedy moves strand vertex 4 and split triangle {3,4,5} across two communities; Leiden's refinement keeps sub-communities connected and recovers the tidier, higher-Q partition.",
+  }),
 };
 
-const EXAMPLE_ORDER = ["bridged", "planted", "hierarchical"];
+const EXAMPLE_ORDER = ["refine", "bridged", "planted", "hierarchical"];
 const EXAMPLE_LABELS = {
+  refine:       "Refinement recovers a cleaner cut",
   bridged:      "Two cliques + bridge (2 communities)",
   planted:      "Three planted communities",
   hierarchical: "Hierarchical (multilevel merges further)",
@@ -326,6 +350,11 @@ const ALGO_INFO = {
   "multi": {
     h2: "LouvainClustering",
     badge: "multilevel · local moving + aggregation",
+    slotLabels: ["phase", "communities", "modularity Q", "level"],
+  },
+  "leiden": {
+    h2: "LeidenClustering",
+    badge: "local moving + refinement + connectivity guarantee",
     slotLabels: ["phase", "communities", "modularity Q", "level"],
   },
 };
@@ -491,6 +520,224 @@ function runLouvain(g, multilevel) {
 }
 
 // =======================================================================
+// Leiden — JS port of org.jgrapht.alg.clustering.LeidenClustering
+// =======================================================================
+//
+// Same local-moving objective as Louvain, with two additions that make it a
+// faithful port of the JGraphT class:
+//   1. a REFINEMENT phase between local moving and aggregation — within each
+//      community, nodes are merged into sub-communities only along edges, so
+//      every refined sub-community is connected; aggregation then contracts the
+//      refined sub-communities;
+//   2. a final CONNECTED-COMPONENTS split of the reported partition, which is
+//      the unconditional well-connected-community guarantee.
+// Vertices are visited in a fixed order here (a single deterministic execution
+// of the otherwise order-randomised algorithm) so the animation is reproducible.
+
+function runLeiden(g) {
+  const N = g.nodes.length;
+  const EDGES = g.edges;
+  const m2 = EDGES.length * 2;
+  const EPS = 1e-12;
+  const events = [];
+
+  const baseDeg = new Array(N).fill(0);
+  const baseAdj = Array.from({ length: N }, () => new Set());
+  for (const [u, v] of EDGES) { baseDeg[u]++; baseDeg[v]++; baseAdj[u].add(v); baseAdj[v].add(u); }
+  function modularity(oc) {
+    const tot = {}, ein = {};
+    for (let i = 0; i < N; i++) tot[oc[i]] = (tot[oc[i]] || 0) + baseDeg[i];
+    for (const [u, v] of EDGES) if (oc[u] === oc[v]) ein[oc[u]] = (ein[oc[u]] || 0) + 1;
+    let q = 0;
+    for (const c in tot) q += (2 * (ein[c] || 0)) / m2 - Math.pow(tot[c] / m2, 2);
+    return q;
+  }
+
+  // current-level graph (mirrors the Louvain port)
+  let nodeMembers = Array.from({ length: N }, (_, i) => [i]);
+  let adj = Array.from({ length: N }, () => new Map());
+  for (const [u, v] of EDGES) {
+    adj[u].set(v, (adj[u].get(v) || 0) + 1);
+    adj[v].set(u, (adj[v].get(u) || 0) + 1);
+  }
+  let curN = N;
+
+  function degOf() {
+    const d = new Array(curN).fill(0);
+    for (let i = 0; i < curN; i++) for (const [j, w] of adj[i]) d[i] += (i === j ? 2 * w : w);
+    return d;
+  }
+  // Map a current-level labelling -> original-vertex labels, min original id per group.
+  function ocFrom(labels) {
+    const groupMembers = {};
+    for (let i = 0; i < curN; i++) (groupMembers[labels[i]] || (groupMembers[labels[i]] = [])).push(...nodeMembers[i]);
+    const oc = new Array(N);
+    for (const c in groupMembers) {
+      const label = Math.min(...groupMembers[c]);
+      for (const v of groupMembers[c]) oc[v] = label;
+    }
+    return oc;
+  }
+  const ncomm = (oc) => new Set(oc).size;
+  const distinct = (labels) => new Set(labels).size;
+
+  const initOc = ocFrom(Array.from({ length: curN }, (_, i) => i));
+  events.push({
+    type: "init", comm: initOc, q: modularity(initOc), communities: N, level: 0, pass: 0,
+    message: `Every vertex starts in its own community (${N} communities, Q ≈ 0).`,
+  });
+
+  let level = 0;
+
+  // Local-moving phase — identical objective to Louvain.
+  function localMoving() {
+    const deg = degOf();
+    const comm = Array.from({ length: curN }, (_, i) => i);
+    const sigmaTot = deg.slice();
+    let improved = true, anyMove = false, pass = 0;
+    while (improved) {
+      improved = false; pass++;
+      for (let i = 0; i < curN; i++) {
+        const ki = deg[i];
+        const wTo = new Map();
+        for (const [j, w] of adj[i]) if (j !== i) wTo.set(comm[j], (wTo.get(comm[j]) || 0) + w);
+        const cur = comm[i];
+        sigmaTot[cur] -= ki;
+        let best = cur, bestGain = (wTo.get(cur) || 0) - sigmaTot[cur] * ki / m2;
+        for (const [c, w] of wTo) {
+          if (c === cur) continue;
+          const gain = w - sigmaTot[c] * ki / m2;
+          if (gain > bestGain + EPS) { bestGain = gain; best = c; }
+        }
+        sigmaTot[best] += ki;
+        if (best !== cur) {
+          comm[i] = best; improved = true; anyMove = true;
+          const oc = ocFrom(comm);
+          const q = modularity(oc);
+          const members = nodeMembers[i];
+          events.push({
+            type: "move", members: members.slice(), comm: oc, q,
+            communities: ncomm(oc), level, pass,
+            message: level === 0
+              ? `Local moving: vertex <code>${members[0]}</code> joins its best-gain neighbour — Q = <b>${q.toFixed(3)}</b>, ${ncomm(oc)} communities.`
+              : `Level ${level}: merge sub-community {${members.join(", ")}} into a neighbour — Q = <b>${q.toFixed(3)}</b>, ${ncomm(oc)} communities.`,
+          });
+        }
+      }
+    }
+    return { comm, anyMove };
+  }
+
+  // Refinement phase — within each community of `partition`, merge singleton
+  // nodes into a neighbouring sub-community of the same community only along an
+  // edge with positive gain. Every refined sub-community is therefore connected.
+  function refine(partition) {
+    const deg = degOf();
+    const sigmaTot = deg.slice();
+    const refined = Array.from({ length: curN }, (_, i) => i);
+    const size = new Array(curN).fill(1);
+    for (let i = 0; i < curN; i++) {
+      if (size[refined[i]] !== 1) continue;            // only merge still-singleton nodes
+      const ki = deg[i];
+      const wTo = new Map();
+      for (const [j, w] of adj[i]) if (j !== i && partition[j] === partition[i]) wTo.set(refined[j], (wTo.get(refined[j]) || 0) + w);
+      const cur = refined[i];
+      sigmaTot[cur] -= ki;
+      let best = cur, bestGain = 0;                    // staying isolated has gain 0
+      for (const [c, w] of wTo) {
+        if (c === cur) continue;
+        const gain = w - sigmaTot[c] * ki / m2;
+        if (gain > bestGain + EPS) { bestGain = gain; best = c; }
+      }
+      sigmaTot[best] += ki;
+      if (best !== cur) { refined[i] = best; size[best]++; size[cur]--; }
+    }
+    return refined;
+  }
+
+  // Contract communities given by `labels` into super-vertices (as Louvain).
+  function aggregate(labels) {
+    const cmap = new Map(); let k = 0;
+    for (const c of labels) if (!cmap.has(c)) cmap.set(c, k++);
+    const newMembers = Array.from({ length: k }, () => []);
+    for (let i = 0; i < curN; i++) newMembers[cmap.get(labels[i])].push(...nodeMembers[i]);
+    const newAdj = Array.from({ length: k }, () => new Map());
+    for (let i = 0; i < curN; i++) {
+      const ci = cmap.get(labels[i]);
+      for (const [j, w] of adj[i]) {
+        if (j < i) continue;
+        const cj = cmap.get(labels[j]);
+        const a = Math.min(ci, cj), b = Math.max(ci, cj);
+        if (a === b) newAdj[a].set(a, (newAdj[a].get(a) || 0) + w);
+        else {
+          newAdj[a].set(b, (newAdj[a].get(b) || 0) + w);
+          newAdj[b].set(a, (newAdj[b].get(a) || 0) + w);
+        }
+      }
+    }
+    nodeMembers = newMembers; adj = newAdj; curN = k;
+  }
+
+  // Split each community of `oc` into its connected components in the ORIGINAL
+  // graph. Relabels each component by its minimum original id (stable colour).
+  function connectedSplit(oc) {
+    const out = new Array(N).fill(-1);
+    for (let s = 0; s < N; s++) {
+      if (out[s] !== -1) continue;
+      const comp = [s]; const stack = [s]; out[s] = -2;
+      while (stack.length) {
+        const u = stack.pop();
+        for (const v of baseAdj[u]) if (out[v] === -1 && oc[v] === oc[u]) { out[v] = -2; comp.push(v); stack.push(v); }
+      }
+      const label = Math.min(...comp);
+      for (const v of comp) out[v] = label;
+    }
+    return out;
+  }
+
+  let reportedOc = initOc;            // coarsest partition P seen so far
+  for (;;) {
+    const { comm, anyMove } = localMoving();
+    if (!anyMove || distinct(comm) === curN) break;   // local moving merged nothing
+    reportedOc = ocFrom(comm);
+
+    const refined = refine(comm);
+    const refOc = ocFrom(refined);
+    const splitCount = ncomm(refOc) - ncomm(reportedOc);
+    events.push({
+      type: "refine", comm: refOc, q: modularity(refOc), communities: ncomm(refOc), level,
+      message: splitCount > 0
+        ? `Refine level ${level}: re-grow each community along edges — ${splitCount === 1 ? "one community splits" : splitCount + " communities split"} into connected sub-communities (${ncomm(refOc)} total). These, not the whole communities, are what gets contracted.`
+        : `Refine level ${level}: each community is already a single connected sub-community — nothing to split.`,
+    });
+
+    if (distinct(refined) >= curN) break;             // refinement could not contract further
+    aggregate(refined);
+    level++;
+    events.push({
+      type: "aggregate", comm: reportedOc, q: modularity(reportedOc), communities: ncomm(reportedOc), level,
+      message: `Aggregate: contract the refined sub-communities into ${curN} super-vertices and run local moving again at level ${level}.`,
+    });
+    if (curN === 1) break;
+  }
+
+  // Unconditional guarantee: every reported community is connected.
+  const split = connectedSplit(reportedOc);
+  const repaired = ncomm(split) - ncomm(reportedOc);
+  events.push({
+    type: "split", comm: split, q: modularity(split), communities: ncomm(split), level,
+    message: repaired > 0
+      ? `Connectivity guarantee: ${repaired} reported community was internally disconnected — split into connected pieces (Louvain would have left it broken).`
+      : `Connectivity guarantee: every community is already connected — Leiden certifies it (this is the property Louvain cannot promise).`,
+  });
+  events.push({
+    type: "done", comm: split, q: modularity(split), communities: ncomm(split), level,
+    message: `Converged — <b>${ncomm(split)}</b> well-connected communities, modularity Q = <b>${modularity(split).toFixed(3)}</b>.`,
+  });
+  return { events };
+}
+
+// =======================================================================
 // Renderer
 // =======================================================================
 
@@ -535,7 +782,9 @@ function applyEvent(state, ev) {
   switch (ev.type) {
     case "init": state.phaseLabel = "init"; break;
     case "move": state.phaseLabel = "local-move"; state.moving = new Set(ev.members); break;
+    case "refine": state.phaseLabel = "refine"; break;
     case "aggregate": state.phaseLabel = "aggregate"; break;
+    case "split": state.phaseLabel = "verify"; break;
     case "done": state.phaseLabel = "done"; state.finished = true; break;
   }
 }
@@ -632,6 +881,7 @@ const state = { paneA: paneState(), paneB: paneState(), playing: false, timer: n
 function runAlgo(algo, g) {
   if (algo === "local") return runLouvain(g, false);
   if (algo === "multi") return runLouvain(g, true);
+  if (algo === "leiden") return runLeiden(g);
   throw new Error("unknown algo " + algo);
 }
 
@@ -659,7 +909,7 @@ function updateHeader(algo, side) {
 function slotsFor(s) {
   const q = s.statsQ.toFixed(3);
   if (s.algo === "local") return [s.phaseLabel, s.statsCommunities, q, s.statsPass];
-  if (s.algo === "multi") return [s.phaseLabel, s.statsCommunities, q, s.statsLevel];
+  if (s.algo === "multi" || s.algo === "leiden") return [s.phaseLabel, s.statsCommunities, q, s.statsLevel];
   return [s.phaseLabel, 0, q, 0];
 }
 
